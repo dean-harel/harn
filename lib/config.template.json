@@ -1,0 +1,22 @@
+{
+  "active": {
+    "gateway": "openrouter",
+    "local":   "ollama"
+  },
+
+  "gateway": {
+    "openrouter": {
+      "key_ref": "op://<vault>/<item>/<field>",
+      "anthropic_wire": { "base_url": "https://openrouter.ai/api" }
+    }
+  },
+
+  "local": {
+    "ollama": { "launcher": "ollama launch" }
+  },
+
+  "harness": {
+    "claude": { "wire": "anthropic", "binary": "claude", "supports": ["account","gw","local"], "default": "account" },
+    "pi":     { "wire": "openai",    "binary": "pi",     "supports": ["gw","local"],            "default": null }
+  }
+}
