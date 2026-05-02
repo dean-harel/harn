@@ -2,8 +2,10 @@
 # agent: unified launcher for AI coding harnesses.
 # Spec: /Users/deanharel/Developer/llm-harness-wrapper/spec.md
 
-_AGENT_CONFIG="${AGENT_CONFIG:-$HOME/Developer/agent/config.json}"
-_AGENT_TEMPLATE="$HOME/Developer/agent/lib/config.template.json"
+# Paths: script-relative by default, overrideable via AGENT_ROOT or AGENT_CONFIG
+_AGENT_ROOT="${AGENT_ROOT:-${0:A:h}/..}"
+_AGENT_CONFIG="${AGENT_CONFIG:-$_AGENT_ROOT/config.json}"
+_AGENT_TEMPLATE="$_AGENT_ROOT/lib/config.template.json"
 
 # Emit the raw config JSON. Respects $AGENT_CONFIG override for tests;
 # falls back to template if live config does not yet exist, so helpers
