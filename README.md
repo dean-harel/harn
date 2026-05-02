@@ -22,4 +22,10 @@ agent config init    # create config.json
 agent config edit    # edit config
 ```
 
+## Paths
+
+- **Config:** `~/.config/agent/config.json` (or `AGENT_CONFIG` env var)
+- **Template:** `<script-dir>/lib/config.template.json`
+- **Override:** `AGENT_ROOT=/path/to/agent`
+
 Requires `jq` and optionally `op` (1Password CLI) or `security` (macOS).
