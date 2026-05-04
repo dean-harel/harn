@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 set -eu
-source ~/Developer/agent/lib/agent.zsh
+source "${0:A:h}/../lib/agent.zsh"
 
 AGENT_CONFIG=~/.config/agent/config.template.json
 
