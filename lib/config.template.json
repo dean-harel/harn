@@ -4,6 +4,10 @@
     "local":   "ollama"
   },
 
+  "secrets": {
+    "op": { "command": "op read" }
+  },
+
   "gateway": {
     "openrouter": {
       "key_ref": "op://<vault>/<item>/<field>",
