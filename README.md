@@ -1,6 +1,6 @@
 # harn
 
-Unified launcher for AI coding harnesses (Claude Code, Pi, ...).
+Unified launcher for AI coding harnesses (Claude Code, Codex, Pi, ...).
 
 > Personal utility, shared in case it's useful. macOS + zsh only. No support promised.
 
@@ -22,7 +22,7 @@ Requires `jq`. The script is sourced into your shell; after editing it, re-sourc
 
 ## Modes
 
-- **`account`** — exec the harness against its own subscription/auth (e.g. `claude` with no env munging).
+- **`account`** — exec the harness against its own subscription/auth (e.g. `claude` ChatGPT-style login or `codex` ChatGPT auth). Wire-specific env vars that could redirect the session (`ANTHROPIC_*` for anthropic, `OPENAI_API_KEY`/`OPENAI_BASE_URL` for openai) are unset before exec.
 - **`gw`** — route through a configured gateway: resolve a key, inject env vars per the harness's wire protocol, exec.
 - **`local`** — dispatch to a configured launcher (e.g. `ollama launch`) for a local model.
 

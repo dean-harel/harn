@@ -385,7 +385,7 @@ _harn_help() {
 usage: harn <harness> [<mode>] [<model>] [-- <passthrough args>...]
 
 Modes:
-  account | -a    Harness-managed subscription (claude only, default)
+  account | -a    Harness-managed subscription (claude, codex)
   gw      | -g    Via a configured gateway (uses active.gateway from config)
   local   | -l    Local model via configured launcher (default: ollama launch)
 
@@ -400,6 +400,8 @@ Examples:
   harn claude
   harn claude gw anthropic/claude-sonnet-4.5
   harn claude local qwen3.6 -- -p "hello"
+  harn codex
+  harn codex gw openai/gpt-4o
   harn pi gw openai/gpt-4o
   harn pi local qwen3.6
 EOF
