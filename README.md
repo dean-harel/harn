@@ -8,6 +8,7 @@ Unified launcher for AI coding harnesses (Claude Code, Pi, ...).
 harn claude              # account mode (default)
 harn claude gw model     # via gateway
 harn claude local qwen   # local model
+harn codex gw openai/gpt-4o
 ```
 
 ## Install
@@ -116,7 +117,12 @@ Path: `~/.config/harn/config.json` (or `$XDG_CONFIG_HOME/harn/config.json`). Ove
             "uniqueItems": true,
             "items": { "enum": ["account", "gw", "local"] }
           },
-          "default":  { "enum": ["account", "gw", "local", null] }
+          "default":  { "enum": ["account", "gw", "local", null] },
+          "gw_argv": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "openai-wire only: argv template for gw mode. Placeholders {gw} and {model} are substituted. Defaults to [\"--provider\", \"{gw}\", \"--model\", \"{model}\"]."
+          }
         }
       }
     }
@@ -135,7 +141,7 @@ When you run `harn <harness> gw <model>`:
 3. Inject env vars based on the harness's `wire`:
    - **`anthropic`**: set `ANTHROPIC_BASE_URL` (gateway URL) and `ANTHROPIC_AUTH_TOKEN` (key). Clear `ANTHROPIC_API_KEY` to force the gateway path.
    - **`openai`**: set `<KEY_ENV>=<key>` where `KEY_ENV` defaults to `<UPPER(gateway)>_API_KEY` or comes from `gateway.<name>.key_env`. Never put the key on argv (visible in `ps`).
-4. Exec the harness binary.
+4. Exec the harness binary. For openai-wire harnesses, argv is templated by `harness.<name>.gw_argv`: `{gw}` and `{model}` are substituted. Pi takes `--provider <gw> --model <m>`; codex takes `-c model_provider=<gw> --model <m>`. Default if unset is the pi shape.
 
 Env vars die with the spawned process. Keys are never persisted to disk.
 

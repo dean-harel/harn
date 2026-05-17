@@ -47,6 +47,18 @@ _harn_harness_binary() {
   _harn_read_config | jq -r --arg h "$harness" '.harness[$h].binary // empty'
 }
 
+# Emit harness.<h>.gw_argv as newline-separated tokens. If absent, emit the
+# default openai-wire template (pi-compatible) so existing configs keep working.
+# Callers fill an array via:  argv=("${(@f)$(_harn_harness_gw_argv $h)}")
+_harn_harness_gw_argv() {
+  local harness="$1"
+  _harn_read_config | jq -r --arg h "$harness" '
+    .harness[$h].gw_argv
+    // ["--provider", "{gw}", "--model", "{model}"]
+    | .[]
+  '
+}
+
 # Clears and populates parse results into _A_* globals.
 # Usage: _harn_parse <args...>
 _harn_parse() {
@@ -186,14 +198,28 @@ harn() {
 }
 
 _harn_do_account() {
-  local binary
+  local binary wire
   binary="$(_harn_harness_binary "$_A_HARNESS")"
+  wire="$(_harn_harness_wire "$_A_HARNESS")"
+
+  # Pick env vars to clear so account-mode auth (subscription/login) is not
+  # silently overridden by a stray API key or base URL in the user's shell.
+  local -a clear
+  case "$wire" in
+    anthropic) clear=(ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY) ;;
+    openai)    clear=(OPENAI_API_KEY OPENAI_BASE_URL) ;;
+    *)
+      echo "harn: harness '$_A_HARNESS' has unknown wire '$wire'" >&2
+      return 3
+      ;;
+  esac
+
   if (( _A_SHOW )); then
-    echo "unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY"
+    echo "unset ${clear[*]}"
     echo "exec ${(q-)binary} ${(q-)_A_PASSTHROUGH[@]}"
     return 0
   fi
-  ( unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY
+  ( unset "${clear[@]}"
     exec "$binary" "${_A_PASSTHROUGH[@]}" )
 }
 
@@ -293,13 +319,25 @@ _harn_do_gw_openai() {
   key_env="$(_harn_read_config | jq -r --arg n "$gw_name" '.gateway[$n].key_env // empty')"
   [[ -z "$key_env" ]] && key_env="${(U)gw_name}_API_KEY"
 
+  # Build templated argv from harness.<h>.gw_argv. Each openai-wire harness
+  # spells "use gateway X with model Y" differently (pi has --provider, codex
+  # has -c model_provider=...), so the shape lives in config.
+  local -a argv tmpl
+  tmpl=("${(@f)$(_harn_harness_gw_argv "$_A_HARNESS")}")
+  local tok
+  for tok in "${tmpl[@]}"; do
+    tok="${tok//\{gw\}/$gw_name}"
+    tok="${tok//\{model\}/$_A_MODEL}"
+    argv+=("$tok")
+  done
+
   if (( _A_SHOW )); then
     echo "export ${key_env}=${(qqq)key}"
-    echo "exec ${(q-)binary} --provider ${(q-)gw_name} --model ${(q-)_A_MODEL} ${(q-)_A_PASSTHROUGH[@]}"
+    echo "exec ${(q-)binary} ${(q-)argv[@]} ${(q-)_A_PASSTHROUGH[@]}"
     return 0
   fi
   ( export "$key_env=$key"
-    exec "$binary" --provider "$gw_name" --model "$_A_MODEL" "${_A_PASSTHROUGH[@]}" )
+    exec "$binary" "${argv[@]}" "${_A_PASSTHROUGH[@]}" )
 }
 
 _harn_err_unknown_harness() {

@@ -21,6 +21,9 @@
 
   "harness": {
     "claude": { "wire": "anthropic", "binary": "claude", "supports": ["account","gw","local"], "default": "account" },
-    "pi":     { "wire": "openai",    "binary": "pi",     "supports": ["gw","local"],            "default": null }
+    "codex":  { "wire": "openai",    "binary": "codex",  "supports": ["account","gw","local"], "default": "account",
+                "gw_argv": ["-c", "model_provider={gw}", "--model", "{model}"] },
+    "pi":     { "wire": "openai",    "binary": "pi",     "supports": ["gw","local"],            "default": null,
+                "gw_argv": ["--provider", "{gw}", "--model", "{model}"] }
   }
 }

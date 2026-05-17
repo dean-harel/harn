@@ -1,10 +1,11 @@
 #!/usr/bin/env zsh
 set -eu
-source "${0:A:h}/../lib/harn.zsh"
 
 # Point tests at the in-repo template so they don't depend on the user's
-# live config or on the read-config fallback behavior.
+# live config. Must be set before sourcing — harn.zsh fixes _HARN_CONFIG
+# from HARN_CONFIG at source time.
 HARN_CONFIG="${0:A:h}/../lib/config.template.json"
+source "${0:A:h}/../lib/harn.zsh"
 
 # Test: _harn_read_config should emit the raw JSON
 out=$(_harn_read_config)
@@ -122,6 +123,28 @@ echo "$out" | grep -q -- '--api-key' \
   && { echo "FAIL: --api-key leaked onto argv"; exit 1; } \
   || echo "PASS: gw pi no --api-key on argv"
 
+# codex account: openai-wire account mode clears OPENAI_* (not ANTHROPIC_*)
+out=$(harn codex --show)
+echo "$out" | grep -q 'unset OPENAI_API_KEY OPENAI_BASE_URL' \
+  && echo "PASS: codex account unsets OPENAI_*" || { echo "FAIL: got '$out'"; exit 1; }
+echo "$out" | grep -q 'exec codex' \
+  && echo "PASS: codex account execs codex" || { echo "FAIL"; exit 1; }
+echo "$out" | grep -q 'ANTHROPIC' \
+  && { echo "FAIL: codex account leaked ANTHROPIC_* unset"; exit 1; } \
+  || echo "PASS: codex account no ANTHROPIC_* leak"
+
+# codex gw: templated argv (codex uses -c model_provider=..., not --provider)
+out=$(harn codex gw openai/gpt-4o --show)
+echo "$out" | grep -q 'export OPENROUTER_API_KEY="fake-key-for-tests"' \
+  && echo "PASS: gw codex exports key env" || { echo "FAIL: got '$out'"; exit 1; }
+echo "$out" | grep -q 'exec codex -c model_provider=openrouter --model openai/gpt-4o' \
+  && echo "PASS: gw codex templated exec" || { echo "FAIL: got '$out'"; exit 1; }
+
+# codex local: launcher dispatch identical shape to pi/claude
+out=$(harn codex local qwen3.6 --show)
+echo "$out" | grep -q 'exec ollama launch codex --model qwen3.6' \
+  && echo "PASS: codex local dispatch" || { echo "FAIL: got '$out'"; exit 1; }
+
 # Missing model is an error
 out=$(harn claude gw --show 2>&1 || true)
 echo "$out" | grep -q "requires a model" && echo "PASS: gw missing model" || { echo "FAIL"; exit 1; }
@@ -141,7 +164,7 @@ unset -f op  # cleanup mock
 # Unknown harness
 out=$(harn bogus local foo 2>&1 || true)
 echo "$out" | grep -q "unknown harness 'bogus'" && echo "PASS: err unknown harness" || { echo "FAIL"; exit 1; }
-echo "$out" | grep -q "known harnesses: claude, pi" && echo "PASS: err lists harnesses" || { echo "FAIL"; exit 1; }
+echo "$out" | grep -q "known harnesses: claude, codex, pi" && echo "PASS: err lists harnesses" || { echo "FAIL"; exit 1; }
 
 # Pi with no default
 out=$(harn pi 2>&1 || true)
