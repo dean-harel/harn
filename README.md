@@ -84,6 +84,14 @@ Path: `~/.config/harn/config.json` (or `$XDG_CONFIG_HOME/harn/config.json`). Ove
               "base_url": { "type": "string", "format": "uri" }
             }
           },
+          "openai_wire": {
+            "type": "object",
+            "required": ["base_url"],
+            "properties": {
+              "base_url": { "type": "string", "format": "uri" },
+              "wire_api": { "type": "string", "description": "Default: \"chat\"." }
+            }
+          },
           "key_env": {
             "type": "string",
             "description": "openai-wire: env var name. Default: <UPPER(name)>_API_KEY."
@@ -121,7 +129,7 @@ Path: `~/.config/harn/config.json` (or `$XDG_CONFIG_HOME/harn/config.json`). Ove
           "gw_argv": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "openai-wire only: argv template for gw mode. Placeholders {gw} and {model} are substituted. Defaults to [\"--provider\", \"{gw}\", \"--model\", \"{model}\"]."
+            "description": "openai-wire only: argv template for gw mode. Placeholders: {gw}, {model}, {base_url}, {key_env}, {wire_api}. Defaults to [\"--provider\", \"{gw}\", \"--model\", \"{model}\"]."
           }
         }
       }
@@ -139,9 +147,9 @@ When you run `harn <harness> gw <model>`:
 1. Look up `gateway.<active.gateway>` → get `key_ref` and the wire-specific config.
 2. Resolve `key_ref` via the secrets mechanism (below) → get the key.
 3. Inject env vars based on the harness's `wire`:
-   - **`anthropic`**: set `ANTHROPIC_BASE_URL` (gateway URL) and `ANTHROPIC_AUTH_TOKEN` (key). Clear `ANTHROPIC_API_KEY` to force the gateway path.
+   - **`anthropic`**: set `ANTHROPIC_BASE_URL` (from `gateway.<name>.anthropic_wire.base_url`) and `ANTHROPIC_AUTH_TOKEN` (key). Clear `ANTHROPIC_API_KEY` to force the gateway path.
    - **`openai`**: set `<KEY_ENV>=<key>` where `KEY_ENV` defaults to `<UPPER(gateway)>_API_KEY` or comes from `gateway.<name>.key_env`. Never put the key on argv (visible in `ps`).
-4. Exec the harness binary. For openai-wire harnesses, argv is templated by `harness.<name>.gw_argv`: `{gw}` and `{model}` are substituted. Pi takes `--provider <gw> --model <m>`; codex takes `-c model_provider=<gw> --model <m>`. Default if unset is the pi shape.
+4. Exec the harness binary. For openai-wire harnesses, argv is templated by `harness.<name>.gw_argv` with substitutions for `{gw}`, `{model}`, `{base_url}` (from `gateway.<name>.openai_wire.base_url`), `{key_env}`, and `{wire_api}` (from `openai_wire.wire_api`, default `"chat"`). Pi's template uses only `{gw}` and `{model}` because pi has a built-in provider registry; codex's template uses the full set so harn can inject the whole provider definition via `-c` overrides without needing `~/.codex/config.toml`. Default template if unset is the pi shape.
 
 Env vars die with the spawned process. Keys are never persisted to disk.
 

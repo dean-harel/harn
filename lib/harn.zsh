@@ -311,7 +311,7 @@ _harn_do_gw_anthropic() {
 }
 
 _harn_do_gw_openai() {
-  local gw_name="$1" key="$2" binary key_env
+  local gw_name="$1" key="$2" binary key_env base_url wire_api
   binary="$(_harn_harness_binary "$_A_HARNESS")"
 
   # Pick env-var name: explicit gateway.key_env, else <UPPER(gw_name)>_API_KEY.
@@ -319,15 +319,27 @@ _harn_do_gw_openai() {
   key_env="$(_harn_read_config | jq -r --arg n "$gw_name" '.gateway[$n].key_env // empty')"
   [[ -z "$key_env" ]] && key_env="${(U)gw_name}_API_KEY"
 
-  # Build templated argv from harness.<h>.gw_argv. Each openai-wire harness
-  # spells "use gateway X with model Y" differently (pi has --provider, codex
-  # has -c model_provider=...), so the shape lives in config.
+  # openai_wire is optional: pi-style harnesses with built-in provider
+  # registries don't need it; codex-style harnesses that take the whole
+  # provider definition on argv do. Templates declare which placeholders
+  # they use; we error if a required one is missing.
+  base_url="$(_harn_read_config | jq -r --arg n "$gw_name" '.gateway[$n].openai_wire.base_url // empty')"
+  wire_api="$(_harn_read_config | jq -r --arg n "$gw_name" '.gateway[$n].openai_wire.wire_api // "chat"')"
+
+  # Build templated argv from harness.<h>.gw_argv.
   local -a argv tmpl
   tmpl=("${(@f)$(_harn_harness_gw_argv "$_A_HARNESS")}")
   local tok
   for tok in "${tmpl[@]}"; do
+    if [[ "$tok" == *"{base_url}"* && -z "$base_url" ]]; then
+      echo "harn: harness '$_A_HARNESS' gw_argv references {base_url} but gateway '$gw_name' has no openai_wire.base_url" >&2
+      return 2
+    fi
     tok="${tok//\{gw\}/$gw_name}"
     tok="${tok//\{model\}/$_A_MODEL}"
+    tok="${tok//\{base_url\}/$base_url}"
+    tok="${tok//\{key_env\}/$key_env}"
+    tok="${tok//\{wire_api\}/$wire_api}"
     argv+=("$tok")
   done
 

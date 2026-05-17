@@ -11,7 +11,8 @@
   "gateway": {
     "openrouter": {
       "key_ref": "op://<vault>/<item>/<field>",
-      "anthropic_wire": { "base_url": "https://openrouter.ai/api" }
+      "anthropic_wire": { "base_url": "https://openrouter.ai/api" },
+      "openai_wire":    { "base_url": "https://openrouter.ai/api/v1", "wire_api": "chat" }
     }
   },
 
@@ -22,7 +23,14 @@
   "harness": {
     "claude": { "wire": "anthropic", "binary": "claude", "supports": ["account","gw","local"], "default": "account" },
     "codex":  { "wire": "openai",    "binary": "codex",  "supports": ["account","gw","local"], "default": "account",
-                "gw_argv": ["-c", "model_provider={gw}", "--model", "{model}"] },
+                "gw_argv": [
+                  "-c", "model_providers.{gw}.name={gw}",
+                  "-c", "model_providers.{gw}.base_url={base_url}",
+                  "-c", "model_providers.{gw}.env_key={key_env}",
+                  "-c", "model_providers.{gw}.wire_api={wire_api}",
+                  "-c", "model_provider={gw}",
+                  "--model", "{model}"
+                ] },
     "pi":     { "wire": "openai",    "binary": "pi",     "supports": ["gw","local"],            "default": null,
                 "gw_argv": ["--provider", "{gw}", "--model", "{model}"] }
   }

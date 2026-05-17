@@ -133,12 +133,32 @@ echo "$out" | grep -q 'ANTHROPIC' \
   && { echo "FAIL: codex account leaked ANTHROPIC_* unset"; exit 1; } \
   || echo "PASS: codex account no ANTHROPIC_* leak"
 
-# codex gw: templated argv (codex uses -c model_provider=..., not --provider)
+# codex gw: harn injects the full provider definition via -c overrides so
+# codex doesn't need ~/.codex/config.toml. Routing (base_url) lives in harn config.
 out=$(harn codex gw openai/gpt-4o --show)
 echo "$out" | grep -q 'export OPENROUTER_API_KEY="fake-key-for-tests"' \
   && echo "PASS: gw codex exports key env" || { echo "FAIL: got '$out'"; exit 1; }
-echo "$out" | grep -q 'exec codex -c model_provider=openrouter --model openai/gpt-4o' \
-  && echo "PASS: gw codex templated exec" || { echo "FAIL: got '$out'"; exit 1; }
+echo "$out" | grep -q -- 'model_providers.openrouter.base_url=https://openrouter.ai/api/v1' \
+  && echo "PASS: gw codex injects base_url" || { echo "FAIL: got '$out'"; exit 1; }
+echo "$out" | grep -q -- 'model_providers.openrouter.env_key=OPENROUTER_API_KEY' \
+  && echo "PASS: gw codex injects env_key" || { echo "FAIL: got '$out'"; exit 1; }
+echo "$out" | grep -q -- 'model_providers.openrouter.wire_api=chat' \
+  && echo "PASS: gw codex injects wire_api" || { echo "FAIL: got '$out'"; exit 1; }
+echo "$out" | grep -q -- '-c model_provider=openrouter --model openai/gpt-4o' \
+  && echo "PASS: gw codex selects provider + model" || { echo "FAIL: got '$out'"; exit 1; }
+
+# Missing openai_wire.base_url on the active gateway is a clean error for
+# templates that need it. Use a temp config with codex but no openai_wire.
+tmpcfg=$(mktemp)
+jq 'del(.gateway.openrouter.openai_wire)' "$HARN_CONFIG" > "$tmpcfg"
+err=$(HARN_CONFIG="$tmpcfg" zsh -c "
+  HARN_CONFIG='$tmpcfg' source '${0:A:h}/../lib/harn.zsh'
+  op() { echo fake-key-for-tests; }
+  harn codex gw openai/gpt-4o --show 2>&1
+" || true)
+echo "$err" | grep -q "gw_argv references {base_url}" \
+  && echo "PASS: gw codex missing base_url errors clearly" || { echo "FAIL: got '$err'"; exit 1; }
+rm -f "$tmpcfg"
 
 # codex local: launcher dispatch identical shape to pi/claude
 out=$(harn codex local qwen3.6 --show)
