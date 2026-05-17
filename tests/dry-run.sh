@@ -142,7 +142,7 @@ echo "$out" | grep -q -- 'model_providers.openrouter.base_url=https://openrouter
   && echo "PASS: gw codex injects base_url" || { echo "FAIL: got '$out'"; exit 1; }
 echo "$out" | grep -q -- 'model_providers.openrouter.env_key=OPENROUTER_API_KEY' \
   && echo "PASS: gw codex injects env_key" || { echo "FAIL: got '$out'"; exit 1; }
-echo "$out" | grep -q -- 'model_providers.openrouter.wire_api=chat' \
+echo "$out" | grep -q -- 'model_providers.openrouter.wire_api=responses' \
   && echo "PASS: gw codex injects wire_api" || { echo "FAIL: got '$out'"; exit 1; }
 echo "$out" | grep -q -- '-c model_provider=openrouter --model openai/gpt-4o' \
   && echo "PASS: gw codex selects provider + model" || { echo "FAIL: got '$out'"; exit 1; }

@@ -324,7 +324,7 @@ _harn_do_gw_openai() {
   # provider definition on argv do. Templates declare which placeholders
   # they use; we error if a required one is missing.
   base_url="$(_harn_read_config | jq -r --arg n "$gw_name" '.gateway[$n].openai_wire.base_url // empty')"
-  wire_api="$(_harn_read_config | jq -r --arg n "$gw_name" '.gateway[$n].openai_wire.wire_api // "chat"')"
+  wire_api="$(_harn_read_config | jq -r --arg n "$gw_name" '.gateway[$n].openai_wire.wire_api // "responses"')"
 
   # Build templated argv from harness.<h>.gw_argv.
   local -a argv tmpl

@@ -12,7 +12,7 @@
     "openrouter": {
       "key_ref": "op://<vault>/<item>/<field>",
       "anthropic_wire": { "base_url": "https://openrouter.ai/api" },
-      "openai_wire":    { "base_url": "https://openrouter.ai/api/v1", "wire_api": "chat" }
+      "openai_wire":    { "base_url": "https://openrouter.ai/api/v1", "wire_api": "responses" }
     }
   },
 
