@@ -32,6 +32,8 @@
                   "--model", "{model}"
                 ] },
     "pi":     { "wire": "openai",    "binary": "pi",     "supports": ["gw","local"],            "default": null,
-                "gw_argv": ["--provider", "{gw}", "--model", "{model}"] }
+                "gw_argv": ["--provider", "{gw}", "--model", "{model}"] },
+    "hermes": { "wire": "openai",    "binary": "hermes", "supports": ["gw","local"],            "default": null,
+                "gw_argv": ["chat", "--provider", "{gw}", "--model", "{model}"] }
   }
 }

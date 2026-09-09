@@ -416,6 +416,7 @@ Examples:
   harn codex gw openai/gpt-4o
   harn pi gw openai/gpt-4o
   harn pi local qwen3.6
+  harn hermes gw openai/gpt-4o
 EOF
 }
 

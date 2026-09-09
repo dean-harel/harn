@@ -1,6 +1,6 @@
 # harn
 
-Unified launcher for AI coding harnesses (Claude Code, Codex, Pi, ...).
+Unified launcher for AI coding harnesses (Claude Code, Codex, Pi, Hermes Agent, ...).
 
 > Personal utility, shared in case it's useful. macOS + zsh only. No support promised.
 
@@ -9,6 +9,7 @@ harn claude              # account mode (default)
 harn claude gw model     # via gateway
 harn claude local qwen   # local model
 harn codex gw openai/gpt-4o
+harn hermes gw openai/gpt-4o
 ```
 
 ## Install
@@ -149,7 +150,7 @@ When you run `harn <harness> gw <model>`:
 3. Inject env vars based on the harness's `wire`:
    - **`anthropic`**: set `ANTHROPIC_BASE_URL` (from `gateway.<name>.anthropic_wire.base_url`) and `ANTHROPIC_AUTH_TOKEN` (key). Clear `ANTHROPIC_API_KEY` to force the gateway path.
    - **`openai`**: set `<KEY_ENV>=<key>` where `KEY_ENV` defaults to `<UPPER(gateway)>_API_KEY` or comes from `gateway.<name>.key_env`. Never put the key on argv (visible in `ps`).
-4. Exec the harness binary. For openai-wire harnesses, argv is templated by `harness.<name>.gw_argv` with substitutions for `{gw}`, `{model}`, `{base_url}` (from `gateway.<name>.openai_wire.base_url`), `{key_env}`, and `{wire_api}` (from `openai_wire.wire_api`, default `"chat"`). Pi's template uses only `{gw}` and `{model}` because pi has a built-in provider registry; codex's template uses the full set so harn can inject the whole provider definition via `-c` overrides without needing `~/.codex/config.toml`. Default template if unset is the pi shape.
+4. Exec the harness binary. For openai-wire harnesses, argv is templated by `harness.<name>.gw_argv` with substitutions for `{gw}`, `{model}`, `{base_url}` (from `gateway.<name>.openai_wire.base_url`), `{key_env}`, and `{wire_api}` (from `openai_wire.wire_api`, default `"chat"`). Pi's template uses only `{gw}` and `{model}` because pi has a built-in provider registry; codex's template uses the full set so harn can inject the whole provider definition via `-c` overrides without needing `~/.codex/config.toml`. Hermes has a built-in registry too, so its template is the pi shape prefixed with the `chat` subcommand. Default template if unset is the pi shape.
 
 Env vars die with the spawned process. Keys are never persisted to disk.
 

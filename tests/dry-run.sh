@@ -123,6 +123,27 @@ echo "$out" | grep -q -- '--api-key' \
   && { echo "FAIL: --api-key leaked onto argv"; exit 1; } \
   || echo "PASS: gw pi no --api-key on argv"
 
+# hermes gw: gw_argv leads with the `chat` subcommand before the flags.
+out=$(harn hermes gw openai/gpt-4o --show)
+echo "$out" | grep -q 'export OPENROUTER_API_KEY="fake-key-for-tests"' \
+  && echo "PASS: gw hermes exports key env" || { echo "FAIL: got '$out'"; exit 1; }
+echo "$out" | grep -q 'exec hermes chat --provider openrouter --model openai/gpt-4o' \
+  && echo "PASS: gw hermes exec" || { echo "FAIL: got '$out'"; exit 1; }
+
+# hermes local goes via ollama launch hermes
+out=$(harn hermes local qwen3.6 --show)
+echo "$out" | grep -q 'exec ollama launch hermes --model qwen3.6' \
+  && echo "PASS: local hermes via ollama launch" || { echo "FAIL: got '$out'"; exit 1; }
+
+# hermes has no account mode: bare `hermes` fails without its own configured
+# provider, so harn must ask for a mode rather than exec a broken launch.
+out=$(harn hermes --show 2>&1 || true)
+echo "$out" | grep -q 'no default mode' \
+  && echo "PASS: hermes has no default mode" || { echo "FAIL: got '$out'"; exit 1; }
+out=$(harn hermes account --show 2>&1 || true)
+echo "$out" | grep -q "not supported by harness 'hermes'" \
+  && echo "PASS: hermes rejects account mode" || { echo "FAIL: got '$out'"; exit 1; }
+
 # codex account: openai-wire account mode clears OPENAI_* (not ANTHROPIC_*)
 out=$(harn codex --show)
 echo "$out" | grep -q 'unset OPENAI_API_KEY OPENAI_BASE_URL' \
@@ -184,7 +205,7 @@ unset -f op  # cleanup mock
 # Unknown harness
 out=$(harn bogus local foo 2>&1 || true)
 echo "$out" | grep -q "unknown harness 'bogus'" && echo "PASS: err unknown harness" || { echo "FAIL"; exit 1; }
-echo "$out" | grep -q "known harnesses: claude, codex, pi" && echo "PASS: err lists harnesses" || { echo "FAIL"; exit 1; }
+echo "$out" | grep -q "known harnesses: claude, codex, hermes, pi" && echo "PASS: err lists harnesses" || { echo "FAIL"; exit 1; }
 
 # Pi with no default
 out=$(harn pi 2>&1 || true)
