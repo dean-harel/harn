@@ -39,9 +39,16 @@ harn --version
 ```
 
 The first positional after the harness is a source when it names a slot, a provider or
-`account`, and an error otherwise; a model always follows a source. A missing model uses the
-provider's `default_model`, so `harn claude gw` survives a gateway swap. The short mode flags
-(`-l` and friends) are removed.
+`account`, and an error otherwise; a model always follows a source. The short mode flags (`-l`
+and friends) are removed.
+
+A missing model resolves in this order: the provider's `default_model`; for a launcher, no
+`--model` at all, so the launcher shows its own picker; for an endpoint with no
+`default_model`, exit 2 naming `providers.<name>.default_model`. Every endpoint in the shipped
+template carries a `default_model`, so `harn claude gw` survives a swap between them.
+
+Bare `harn <harness>` is valid only for a harness with `account: true`. For any other it exits 2:
+`harn: pi has no subscription login; use gw, local or a provider`.
 
 ## Config
 
@@ -63,6 +70,7 @@ One file, `$HARN_CONFIG` or `${XDG_CONFIG_HOME:-~/.config}/harn/config.json`.
       "kind": "endpoint",
       "label": "api",
       "login": "paste",
+      "default_model": "glm-5.3-flash",
       "anthropic_wire": { "base_url": "https://ollama.com" },
       "openai_wire": { "base_url": "https://ollama.com/v1", "wire_api": "responses" }
     },
@@ -70,6 +78,7 @@ One file, `$HARN_CONFIG` or `${XDG_CONFIG_HOME:-~/.config}/harn/config.json`.
       "kind": "endpoint",
       "label": "api",
       "login": "paste",
+      "default_model": "claude-sonnet-5",
       "anthropic_wire": { "base_url": "https://api.anthropic.com", "key_env": "ANTHROPIC_API_KEY" }
     },
     "ollama": { "kind": "launcher", "label": "local", "launcher": ["ollama", "launch"] }
@@ -89,12 +98,20 @@ One file, `$HARN_CONFIG` or `${XDG_CONFIG_HOME:-~/.config}/harn/config.json`.
 ```
 
 - **Slots** are the user's categories and the swap point. Re-pointing `gw` from `openrouter`
-  to `ollama-cloud` changes no command.
-- **`label`** (`subscription`, `api`, `local`) is descriptive: docs and `--show` print it so a
-  user sees whether a run leaves the machine and who bills it.
-- **`harness.<h>.account: true`** replaces the `supports` list; endpoint support follows from
-  the wire, and a launcher reports unsupported harnesses itself.
-- `gw_argv` keeps its current contract with `{gw}` renamed `{provider}`.
+  to `ollama-cloud` changes no command. A slot's value is a provider name, or an object mapping
+  harness names to providers with `"*"` as the fallback (`{"*": "ollama", "pi": "ollama-api"}`),
+  for a harness the usual provider cannot serve.
+- **`label`** (`api`, `local`) is descriptive: `--show` prints it so a user sees whether a run
+  leaves the machine. The subscription case has no entry and prints `subscription`.
+- **`harness.<h>.account: true`** marks a harness with its own login. Endpoint support follows
+  from the wire; a launcher reports an unsupported harness itself.
+- **Wire blocks** (`anthropic_wire`, `openai_wire`) each carry `base_url` and an optional
+  `key_env`. `openai_wire` also carries `wire_api` (default `responses`).
+- **`providers.<p>.harness_names.<h>`** (optional) is the name harness `h` knows provider `p` by,
+  substituted for `{provider}` in `gw_argv`; it defaults to the provider's key. It exists for
+  harnesses with a built-in provider registry (pi, hermes).
+- `gw_argv` keeps its current contract with `{gw}` renamed `{provider}`; the other placeholders
+  are `{model}`, `{base_url}`, `{key_env}` and `{wire_api}`.
 - Every command-shaped field (`launcher`, `key_command`) is an argv array, so a path with a space
   survives.
 
@@ -103,19 +120,26 @@ values, and refuses to overwrite without `--force`.
 
 ## Provider kinds
 
-Each kind owns its environment, which is what makes switching clean.
+Every kind starts from the same clean environment, which is what makes switching clean: before
+anything else, harn unsets `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `OPENAI_BASE_URL`, and every `key_env` any configured provider resolves to.
+Each kind then sets only its own variables. `<args>` below is the passthrough after `--`,
+always appended unchanged.
 
-- **account** (implicit, the no-source case). Unset the wire's variables
-  (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`; or `OPENAI_API_KEY`,
-  `OPENAI_BASE_URL`) and exec the binary. Warn, without failing, when `~/.claude/settings.json`
-  sets any of those under `env`, since a settings file overrides the shell.
-- **endpoint**. Resolve the credential, then exec with the wire's variables:
-  - anthropic wire: `ANTHROPIC_BASE_URL`, the key in `key_env` (default `ANTHROPIC_AUTH_TOKEN`,
-    bearer; `ANTHROPIC_API_KEY` for the direct API), the other one set empty, then
-    `<binary> --model <model>`.
-  - openai wire: the key in `key_env` (default `<UPPER(provider)>_API_KEY`), then
-    `<binary> <gw_argv...>`.
-- **launcher**. Exec `<launcher...> <harness> --model <model> [-- <args>]`. The launcher owns
+- **account** (the no-source case, `account: true` harnesses only). Exec `<binary> <args>`.
+  Warn, without failing, when `~/.claude/settings.json` sets any of the variables above under
+  `env`, since a settings file overrides the shell.
+- **endpoint**. Resolve the credential, then:
+  - anthropic wire: set `ANTHROPIC_BASE_URL` to `anthropic_wire.base_url` and the key in
+    `anthropic_wire.key_env` (default `ANTHROPIC_AUTH_TOKEN`, a bearer token; the direct API
+    uses `ANTHROPIC_API_KEY`), then exec `<binary> --model <model> <args>`.
+  - openai wire: set the key in `openai_wire.key_env`, defaulting to the provider name
+    uppercased with every character outside `[A-Z0-9_]` turned into `_`, plus `_API_KEY`
+    (`ollama-cloud` gives `OLLAMA_CLOUD_API_KEY`), then exec `<binary> <gw_argv...> <args>`.
+  - A harness whose `gw_argv` has no `{base_url}` (pi, hermes) reaches only providers its own
+    registry knows by `harness_names`. harn cannot verify that registry, so it passes the name
+    through and the harness reports an unknown one.
+- **launcher**. Exec `<launcher...> <harness> [--model <model>] [-- <args>]`. The launcher owns
   model download, context size and any harness profile it writes. Ollama is the only one.
 
 Rule for adding a source: wire it as an endpoint, and use a launcher only where the tool manages
@@ -126,24 +150,44 @@ runtime state harn should not own.
 An endpoint declares exactly one of:
 
 - **`login: "openrouter-pkce"`**. `harn login openrouter [--workspace <id>]` runs OpenRouter's
-  headless PKCE flow: a verifier from `openssl rand`, an S256 challenge from `openssl dgst
-  -sha256` in base64url, the URL `https://openrouter.ai/auth?code_challenge=...&
-  code_challenge_method=S256&key_label=harn-<hostname>` plus `required_workspace_id` when given,
-  opened with `open` or `xdg-open` and always printed. The user pastes the displayed code; `curl`
-  posts it with the verifier to `https://openrouter.ai/api/v1/auth/keys`. The code is single-use
-  and expires in 10 minutes. `--workspace` locks the key into that workspace server-side.
-- **`login: "paste"`**. `harn login <provider>` reads the key once from a hidden prompt.
+  headless PKCE flow:
+  1. Verifier: `openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n'`, 64 base64url characters
+     (RFC 7636 allows 43 to 128).
+  2. Challenge: `printf %s "$verifier" | openssl dgst -sha256 -binary | openssl base64 -A | tr
+     '+/' '-_' | tr -d '='`.
+  3. URL: `https://openrouter.ai/auth?code_challenge=<challenge>&code_challenge_method=S256&
+     key_label=harn-<hostname>`, plus `&required_workspace_id=<id>` when `--workspace` is given.
+     harn prints it and opens it with `open` or `xdg-open` when present.
+  4. The user pastes the code the page displays. It is single-use and expires in 10 minutes.
+  5. Exchange: `curl -sS --fail-with-body -X POST https://openrouter.ai/api/v1/auth/keys -H
+     'Content-Type: application/json' --data @-`, with the body
+     `{"code": ..., "code_verifier": ..., "code_challenge_method": "S256"}` built by `jq` and
+     written to curl's stdin, so neither value reaches argv. The key is the response's `key`
+     field; a missing or empty `key` exits 2 with the response's error message.
+  `--workspace` locks the key into that workspace server-side.
+- **`login: "paste"`**. `harn login <provider>` reads the key once from a hidden prompt
+  (`read -rs`).
 - **`key_command`**. Any argv whose stdout is the key (`["op","read","op://..."]`,
   `["printenv","OLLAMA_API_KEY"]`). No login step.
 
-Stored keys go to the first available backend, keyed by provider name: the macOS keychain
-(`security`), libsecret (`secret-tool`, which reads the secret from stdin), or a file at
-`${XDG_STATE_HOME:-~/.local/state}/harn/keys/<provider>` created under `umask 077`.
-`harn key <provider>` reads it back; `harn logout` deletes it.
+**Key store.** Keys are stored per provider name in the first backend that passes its probe, in
+this order:
 
-A key travels only in the harness's environment: never argv, never printed, never written
-outside the store. `--show` does not resolve credentials and prints
-`<redacted: login openrouter-pkce>` or `<redacted: key_command op read ...>` in the key's place.
+1. **macOS keychain**, through `security`. Its probe is a write, read and delete of a throwaway
+   item, with the write made without the value on argv. If verify-first item 3 finds no such
+   write, this backend is left out of 1.0 and macOS uses the file.
+2. **libsecret**, through `secret-tool`, which reads the secret from stdin. Its probe is the
+   same round trip, which fails when no secret service is running.
+3. **A file** at `${XDG_STATE_HOME:-~/.local/state}/harn/keys/<provider>`, created under `umask
+   077`. Always available.
+
+`harn key <provider>` reads it back; `harn logout` deletes it from every backend.
+
+**Where a key may go.** A key reaches a harness only through its environment: never argv, never
+written outside the store, and never printed, with one exception: `harn key`, which exists to
+hand the key to another command's stdin or `key_command`. `--show` does not resolve credentials
+and prints `<redacted: login openrouter-pkce>` or `<redacted: key_command op read ...>` in the
+key's place.
 
 ## Repository and release
 
@@ -151,9 +195,10 @@ The bar is a high-end open source agentic tool (pi, `earendil-works/pi`) and the
 conventions as `UNIPaaS/gates` records them, so the repo can be adopted by the team unchanged.
 
 - **Shape.** One executable `bin/harn`, bash 3.2-compatible (macOS `/bin/bash`): no `mapfile`,
-  no associative arrays, empty arrays expanded as `${a[@]+"${a[@]}"}` under `set -u`. `jq`,
-  `curl` and `openssl` are the dependencies; all three ship with or are standard on both
-  platforms. `lib/harn.zsh` and its `source` line are removed.
+  no associative arrays, empty arrays expanded as `${a[@]+"${a[@]}"}` under `set -u`.
+- **Dependencies.** `curl` and `openssl` are present on both platforms. `jq` ships as
+  `/usr/bin/jq` on macOS 15 and later and is a package on Linux and older macOS; the Homebrew
+  formula declares it, and a clone install checks for it and names the install command.
 - **Files.** `README.md` (positioning first), `AGENTS.md` with `CLAUDE.md` symlinked to it,
   `CONTRIBUTING.md` stating the minimal core, `SECURITY.md` with the trust boundary (the user's
   own config, environment and store are inside it) and private reporting through GitHub Security
@@ -163,10 +208,11 @@ conventions as `UNIPaaS/gates` records them, so the repo can be adopted by the t
   `shellcheck`; a Conventional Commits PR-title check. Actions pinned by commit hash with a
   version comment, `permissions: {}` by default, `persist-credentials: false`.
 - **Releases.** release-please on `main`, one immutable semver tag stream, a `simple` release
-  type. A release uploads its source tarball and `SHA256SUMS`, then updates the formula in
-  `dean-harel/homebrew-tap` from the same workflow, since a release created by `GITHUB_TOKEN`
-  triggers no other workflow. The tap write uses a fine-grained token scoped to that repository
-  with `contents: write` and an expiry, stored as `HOMEBREW_TAP_TOKEN`.
+  type. Merging the release PR is the human step that publishes. The release uploads its source
+  tarball and `SHA256SUMS`, then updates the formula in `dean-harel/homebrew-tap` from the same
+  workflow, since a release created by `GITHUB_TOKEN` triggers no other workflow. The tap write
+  uses a fine-grained token scoped to that repository with `contents: write` and an expiry,
+  stored as `HOMEBREW_TAP_TOKEN`.
 - **Install.** `brew install dean-harel/tap/harn` on macOS and Linux, or clone a tag and symlink
   `bin/harn` onto the `PATH`.
 - **Exit codes.** 2 for a usage or config error, 3 for an internal error, otherwise the
@@ -177,13 +223,29 @@ conventions as `UNIPaaS/gates` records them, so the repo can be adopted by the t
 Nothing in the suite launches a harness or reaches the network.
 
 - The existing dry-run cases, ported to bash and to the new grammar.
+- Clean switching: with every variable in the clean list exported, each kind's `--show` output
+  unsets all of them and sets only its own.
 - `--show` never resolves a credential: a `key_command` that writes a marker file leaves no
   marker, and a sentinel key never appears in output.
-- PKCE: the challenge for RFC 7636 Appendix B's verifier equals its published challenge; the
-  exchange runs against a stub `curl` on `PATH` and stores the returned key.
-- The file key store: mode `0600`, round trip, logout removes it. The keychain and libsecret
-  backends are checked by hand on each platform before a release.
-- Slot swap: re-pointing `gw` changes the exec line and nothing else.
+- Key variable names: `ollama-cloud` resolves to `OLLAMA_CLOUD_API_KEY`, and the export succeeds
+  under `/bin/bash`.
+- PKCE: the challenge for RFC 7636 Appendix B's verifier
+  (`dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk`) equals its published challenge
+  (`E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM`); a generated verifier is 64 characters of
+  `[A-Za-z0-9_-]`. The exchange runs against a stub `curl` on `PATH` that records its argv and
+  stdin: the test asserts the URL and method, that stdin carries the pasted code, the verifier
+  and `S256`, that neither appears in argv, and that the returned `key` is stored. A response
+  without `key` exits 2.
+- The file key store: mode `0600`, round trip, logout removes it.
+- Slot swap: re-pointing `gw` from `openrouter` to `ollama-cloud` changes the base URL, the key
+  variable and the redaction line in `--show`, and leaves the harness, its flags and the
+  passthrough unchanged.
+- Missing models: an endpoint without `default_model` exits 2 naming the field; a launcher
+  without a model execs with no `--model`.
+- Bare `harn pi` exits 2 with the no-subscription message.
+- By hand, on each platform before a release, for the keychain and libsecret backends: `harn
+  login` with a paste stores a key, `harn key` prints the same value, `harn logout` then makes
+  `harn key` exit 2, and no key appears in `ps` output during the login.
 
 ## Deferred
 
@@ -197,20 +259,35 @@ Each waits for a concrete need.
 
 ## Verify first
 
-Unknowns that could change the design, in the order implementation should settle them:
+Unknowns that could change the design, in the order implementation should settle them. Each
+names what happens if the answer is no.
 
-1. Whether `ollama launch` supports `pi` and `hermes`. If not, those harnesses reach local
-   models through an endpoint entry on `http://localhost:11434`.
-2. Whether pi and hermes accept a `--provider` they do not ship with (`ollama-cloud`). If not,
-   the provider entry carries the harness-side provider name.
+1. Whether `ollama launch` supports `pi` and `hermes`. If not, the template adds an
+   `ollama-api` endpoint (`http://localhost:11434` and `/v1`, `key_command: ["printf",
+   "ollama"]`) and sets `slots.local` to `{"*": "ollama", "pi": "ollama-api", "hermes":
+   "ollama-api"}`.
+2. Whether pi and hermes can be pointed at a base URL from argv. If yes, their `gw_argv` gains
+   `{base_url}` and swaps work for any provider. If not, they reach only providers their
+   registry knows, through `harness_names`, and the README says so.
 3. A way to write a keychain item without the secret on argv (`security -i` reading its command
-   from stdin is the candidate).
+   from stdin is the candidate). If none, macOS uses the file backend in 1.0.
 4. That OpenRouter's headless flow with `required_workspace_id` returns a key bound to that
-   workspace, checked with one real login.
+   workspace, checked with one real login. If not, `--workspace` is removed and the README tells
+   members which workspace to pick.
 
 ## Migration
 
-1.0.0 drops `active`, `gateway`, `local`, `secrets`, `key_ref` and `supports`. The changelog
-maps each: `active.gateway` becomes `slots.gw`, a gateway becomes a `providers` entry of kind
-`endpoint`, `key_ref` plus `secrets` becomes `key_command` or a `login`, `local.<name>` becomes a
-`launcher` provider and `slots.local`, and `supports` becomes `account: true`.
+1.0.0 drops `active`, `gateway`, `local`, `secrets`, `key_ref`, `supports`, `harness.<h>.default`
+and `gateway.<n>.key_env`. The changelog maps each:
+
+- `active.gateway` becomes `slots.gw`, and `active.local` becomes `slots.local`.
+- `gateway.<n>` becomes a `providers.<n>` entry of kind `endpoint`, and its `key_env` moves into
+  the wire block it applies to.
+- `key_ref` plus `secrets.<scheme>.command` becomes `key_command`: the command string split on
+  whitespace, then the `key_ref` appended (`"op read"` and `op://...` become
+  `["op","read","op://..."]`); or a `login`.
+- `local.<n>.launcher` becomes a `launcher` provider, its string split on whitespace
+  (`"ollama launch"` becomes `["ollama","launch"]`).
+- `supports` becomes `account: true` only where it listed `account`.
+- `harness.<h>.default` goes: no source always means the subscription, and a user who defaulted
+  to `gw` or `local` types the slot.
