@@ -135,7 +135,7 @@ harn_kind_endpoint() {
   model=${A_MODEL:-$(harn_pfield .default_model)}
   [ -n "$model" ] || harn_die 2 "no model given and provider '$S_PROVIDER' has no default" \
     "pass one: harn $A_HARNESS $A_SOURCE <model>" "or set providers.$S_PROVIDER.default_model"
-  key_env=$(harn_key_env "$wire" "$S_PROVIDER")
+  key_env=$(harn_key_env "$wire" "$S_PROVIDER") || exit 2
   harn_credential
   case $wire in
     anthropic)
@@ -183,25 +183,26 @@ harn_kind_launcher() {
 # --- environment
 
 harn_key_env() {
-  local wire=$1 p=$2 explicit
-  explicit=$(cfg --arg p "$p" --arg w "${wire}_wire" '.providers[$p][$w].key_env // empty')
-  if [ -n "$explicit" ]; then
-    printf '%s\n' "$explicit"
-  elif [ "$wire" = anthropic ]; then
-    printf 'ANTHROPIC_AUTH_TOKEN\n'
-  else
-    printf '%s_API_KEY\n' "$(printf '%s' "$p" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')"
+  local wire=$1 p=$2 name
+  name=$(cfg --arg p "$p" --arg w "${wire}_wire" '.providers[$p][$w].key_env // empty')
+  if [ -z "$name" ] && [ "$wire" = anthropic ]; then
+    name=ANTHROPIC_AUTH_TOKEN
+  elif [ -z "$name" ]; then
+    name="$(printf '%s' "$p" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')_API_KEY"
   fi
+  case $name in
+    [A-Za-z_]*) [ -z "$(printf '%s' "$name" | tr -d 'A-Za-z0-9_')" ] && { printf '%s\n' "$name"; return 0; } ;;
+  esac
+  harn_die 2 "'$name' is not a valid environment variable name" "set providers.$p.${wire}_wire.key_env to a valid name"
 }
-
 harn_clean_vars() {
   local p
   {
     printf '%s\n' ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY OPENAI_API_KEY OPENAI_BASE_URL
     while IFS= read -r p; do
       [ "$(cfg --arg p "$p" '.providers[$p].kind')" = endpoint ] || continue
-      harn_key_env anthropic "$p"
-      harn_key_env openai "$p"
+      harn_key_env anthropic "$p" 2>/dev/null || true
+      harn_key_env openai "$p" 2>/dev/null || true
     done < <(cfg '.providers // {} | keys[]')
   } | sort -u
 }

@@ -81,3 +81,16 @@ has "points at harn login" "$OUT" "run: harn login openrouter"
 hn=$(cfgwith '.providers.openrouter.key_command = ["true"] | del(.providers.openrouter.login) | .providers.openrouter.harness_names = {"pi": "or"}')
 OUT=$(HARN_CONFIG="$hn" "$HARN" pi gw m --show 2>&1)
 has "harness_names renames the provider" "$OUT" "exec pi --provider or --model m"
+
+# An invalid key variable name is a config error naming the field, never a run without the key.
+bk=$(cfgwith '.providers.openrouter |= (del(.login) | .key_command = ["printf", "k"] | .anthropic_wire.key_env = "BAD NAME")')
+stub claude 'echo launched'
+OUT=$(HARN_CONFIG="$bk" PATH="$STUBS:$PATH" "$HARN" claude gw 2>&1); RC=$?
+code "invalid key_env is a config error" "$RC" 2
+has "invalid key_env names the field" "$OUT" "providers.openrouter.anthropic_wire.key_env"
+lacks "invalid key_env never launches" "$OUT" "launched"
+dg=$(cfgwith '.providers["1st"] = (.providers.openrouter | del(.login) | .key_command = ["printf", "k"])')
+stub codex 'echo launched'
+OUT=$(HARN_CONFIG="$dg" PATH="$STUBS:$PATH" "$HARN" codex 1st 2>&1); RC=$?
+code "invalid derived key name is a config error" "$RC" 2
+has "invalid derived name says to set key_env" "$OUT" "providers.1st.openai_wire.key_env"
