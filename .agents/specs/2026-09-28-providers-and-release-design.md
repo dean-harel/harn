@@ -20,8 +20,8 @@ Four promises, each one a test the design must pass:
 3. **Credentials handled.** harn obtains, stores and passes keys; nobody pastes a key into a
    dotfile, and no secret manager is assumed.
 4. **Swappable sources.** Changing gateway or local runtime is a config edit; habits and
-   scripts keep working. The limit: a harness that cannot take a base URL from argv (pi and
-   hermes, pending verify-first item 2) swaps only among providers its own registry knows.
+   scripts keep working. The limit: pi and hermes cannot take a base URL from argv, so they swap
+   only among providers their own registry knows.
 
 ## Interface
 
@@ -108,6 +108,9 @@ One file, `$HARN_CONFIG` or `${XDG_CONFIG_HOME:-~/.config}/harn/config.json`.
   from the wire; a launcher reports an unsupported harness itself.
 - **Wire blocks** (`anthropic_wire`, `openai_wire`) each carry `base_url` and an optional
   `key_env`. `openai_wire` also carries `wire_api` (default `responses`).
+- **`providers.<p>.harness_names.<h>`** (optional) is the name harness `h` knows provider `p` by,
+  substituted for `{provider}` in `gw_argv`; it defaults to the provider's key. It exists for pi
+  and hermes, which resolve a provider in their own registry.
 - `gw_argv` keeps its current contract with `{gw}` renamed `{provider}`; the other placeholders
   are `{model}`, `{base_url}`, `{key_env}` and `{wire_api}`.
 - Every command-shaped field (`launcher`, `key_command`) is an argv array, so a path with a space
@@ -278,22 +281,14 @@ Each waits for a concrete need.
 
 ## Verify first
 
-Unknowns that could change the design, in the order implementation should settle them. Each
-names what happens if the answer is no.
+Settled before any code; each answer and its consequence:
 
-Two config features exist only for a no answer, and are built only then.
-
-1. Whether `ollama launch` supports `pi` and `hermes`. If not, the template adds an
-   `ollama-api` endpoint (`anthropic_wire.base_url` `http://localhost:11434`,
-   `openai_wire.base_url` `http://localhost:11434/v1`, `key_command: ["printf", "ollama"]`,
-   `default_model` `qwen3-coder`), and a slot's value may also be an object mapping harness names
-   to providers with `"*"` as the fallback, so `slots.local` becomes `{"*": "ollama", "pi":
-   "ollama-api", "hermes": "ollama-api"}`.
-2. Whether pi and hermes can be pointed at a base URL from argv. If yes, their `gw_argv` gains
-   `{base_url}` and swaps work for any provider. If not, they reach only providers their
-   registry knows, the README says so, and providers gain an optional
-   `providers.<p>.harness_names.<h>`: the name harness `h` knows provider `p` by, substituted for
-   `{provider}` in `gw_argv` and defaulting to the provider's key.
+1. `ollama launch` supports `pi` and `hermes` (Ollama 0.32.14 lists both), so the `ollama`
+   launcher serves every harness and a slot's value stays a single provider name.
+2. Neither pi nor hermes takes a base URL from argv (pi has `--provider`, `--model` and
+   `--api-key`; `hermes chat` has `--provider`, resolved from its built-ins or `providers:` in
+   its own config), so they reach only providers their registry knows, through
+   `harness_names`, and the README says so.
 
 ## Migration
 
