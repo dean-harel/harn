@@ -1,0 +1,224 @@
+#!/bin/bash
+# harn: one command for any AI coding harness, against a subscription, a gateway or a local model.
+# Must run under macOS /bin/bash 3.2: no mapfile, no associative arrays, empty arrays as ${a[@]+"${a[@]}"}.
+set -u
+
+HARN_VERSION="0.0.0-dev" # x-release-please-version
+
+# --- messages
+
+harn_die() {
+  local code=$1 first=$2
+  shift 2
+  printf 'harn: %s\n' "$first" >&2
+  [ $# -eq 0 ] || printf '    %s\n' "$@" >&2
+  exit "$code"
+}
+
+harn_warn() { printf 'harn: warning: %s\n' "$1" >&2; }
+
+harn_require() {
+  local t
+  for t in "$@"; do
+    command -v "$t" >/dev/null 2>&1 \
+      || harn_die 2 "requires $t" "install it: brew install $t, or your Linux package manager"
+  done
+}
+
+# --- paths
+
+harn_self_dir() {
+  local p=$0 d
+  while [ -L "$p" ]; do
+    d=$(cd -P "$(dirname "$p")" && pwd)
+    p=$(readlink "$p")
+    case $p in /*) ;; *) p="$d/$p" ;; esac
+  done
+  cd -P "$(dirname "$p")" && pwd
+}
+
+HARN_ROOT=$(cd "$(harn_self_dir)/.." && pwd)
+HARN_TEMPLATE="$HARN_ROOT/lib/config.template.json"
+HARN_CONFIG_PATH="${HARN_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/harn/config.json}"
+
+# --- config
+
+harn_load_config() {
+  local src=$HARN_CONFIG_PATH bad
+  [ -r "$src" ] || src=$HARN_TEMPLATE
+  HARN_CFG=$(cat "$src") || harn_die 2 "cannot read $src"
+  jq -e . >/dev/null 2>&1 <<<"$HARN_CFG" || harn_die 2 "$src is not valid JSON"
+  if jq -e '(has("gateway") or has("active")) and (has("providers") | not)' >/dev/null <<<"$HARN_CFG"; then
+    harn_die 2 "$src uses the legacy schema" "see the 0.1.0 migration in CHANGELOG.md, or back it up and run: harn config init --force"
+  fi
+  bad=$(jq -r '.providers // {} | keys[] | select(. == "gw" or . == "local" or . == "account")' <<<"$HARN_CFG" | head -n 1)
+  [ -z "$bad" ] || harn_die 2 "provider name '$bad' is reserved" "rename providers.$bad in $src"
+}
+
+cfg() { jq -r "$@" <<<"$HARN_CFG"; }
+
+# --- parsing
+
+harn_usage() { printf 'usage: harn <harness> [<source>] [<model>] [--show] [-- <args>...]\n'; }
+
+harn_parse() {
+  local pos=() a
+  A_HARNESS='' A_SOURCE='' A_MODEL='' A_SHOW=0
+  A_PASS=()
+  while [ $# -gt 0 ]; do
+    a=$1
+    shift
+    case $a in
+      --) A_PASS=("$@"); break ;;
+      --show) A_SHOW=1 ;;
+      -*) harn_die 2 "unknown flag: $a" "see: harn --help" ;;
+      *) pos+=("$a") ;;
+    esac
+  done
+  [ ${#pos[@]} -ge 1 ] || { harn_usage >&2; exit 2; }
+  [ ${#pos[@]} -le 3 ] || harn_die 2 "too many arguments: ${pos[*]}" "$(harn_usage)"
+  A_HARNESS=${pos[0]}
+  A_SOURCE=${pos[1]:-}
+  A_MODEL=${pos[2]:-}
+}
+
+harn_harness_field() { cfg --arg h "$A_HARNESS" --arg f "$1" '.harness[$h][$f] // empty'; }
+
+harn_check_harness() {
+  [ -n "$(harn_harness_field binary)" ] || harn_die 2 "unknown harness '$A_HARNESS'" \
+    "known harnesses: $(cfg '.harness | keys | join(", ")')" "add one under 'harness' in $HARN_CONFIG_PATH"
+}
+
+# --- sources
+
+harn_resolve_source() {
+  S_PROVIDER='' S_KIND=account S_LABEL=subscription
+  case $A_SOURCE in
+    ''|account) ;;
+    gw|local)
+      [ "$(cfg --arg s "$A_SOURCE" '.slots[$s] | type')" != object ] \
+        || harn_die 2 "slots.$A_SOURCE must be a provider name" "set slots.$A_SOURCE in $HARN_CONFIG_PATH"
+      S_PROVIDER=$(cfg --arg s "$A_SOURCE" '.slots[$s] // empty')
+      [ -n "$S_PROVIDER" ] || harn_die 2 "slot '$A_SOURCE' has no provider" "set slots.$A_SOURCE in $HARN_CONFIG_PATH"
+      ;;
+    *) S_PROVIDER=$A_SOURCE ;;
+  esac
+  if [ -n "$S_PROVIDER" ]; then
+    S_KIND=$(harn_pfield .kind)
+    [ -n "$S_KIND" ] || harn_die 2 "unknown source '$S_PROVIDER'" \
+      "known: account, gw, local, $(cfg '.providers // {} | keys | join(", ")')"
+    S_LABEL=$(harn_pfield '.label // "api"')
+  elif [ "$(harn_harness_field account)" != true ]; then
+    harn_die 2 "$A_HARNESS has no subscription login; use gw, local or a provider"
+  fi
+}
+
+harn_pfield() { cfg --arg p "$S_PROVIDER" ".providers[\$p]$1 // empty"; }
+
+# --- kinds
+
+harn_kind_account() {
+  X_ARGV=("$(harn_harness_field binary)")
+  [ -z "$A_MODEL" ] || X_ARGV+=(--model "$A_MODEL")
+  X_ARGV+=(${A_PASS[@]+"${A_PASS[@]}"})
+}
+
+# --- environment
+
+harn_key_env() {
+  local wire=$1 p=$2 explicit
+  explicit=$(cfg --arg p "$p" --arg w "${wire}_wire" '.providers[$p][$w].key_env // empty')
+  if [ -n "$explicit" ]; then
+    printf '%s\n' "$explicit"
+  elif [ "$wire" = anthropic ]; then
+    printf 'ANTHROPIC_AUTH_TOKEN\n'
+  else
+    printf '%s_API_KEY\n' "$(printf '%s' "$p" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9_' '_')"
+  fi
+}
+
+harn_clean_vars() {
+  local p
+  {
+    printf '%s\n' ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY OPENAI_API_KEY OPENAI_BASE_URL
+    while IFS= read -r p; do
+      [ "$(cfg --arg p "$p" '.providers[$p].kind')" = endpoint ] || continue
+      harn_key_env anthropic "$p"
+      harn_key_env openai "$p"
+    done < <(cfg '.providers // {} | keys[]')
+  } | sort -u
+}
+
+harn_warn_claude_settings() {
+  local f
+  for f in "$HOME/.claude/settings.json" .claude/settings.json .claude/settings.local.json; do
+    [ -r "$f" ] || continue
+    jq -e '(.env // {}) | keys | any(test("^(ANTHROPIC_BASE_URL|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY|OPENAI_BASE_URL)$"))' \
+      "$f" >/dev/null 2>&1 && harn_warn "$f sets provider variables under env, which override this run"
+  done
+  return 0
+}
+
+# --- run
+
+harn_setenv() { E_NAMES+=("$1"); E_VALUES+=("$2"); E_SHOWN+=("${3-$2}"); }
+
+harn_q() {
+  case $1 in
+    '<redacted: '*) printf '%s' "$1" ;;
+    *) printf '%q' "$1" ;;
+  esac
+}
+
+harn_run() {
+  local vars i a
+  vars=$(harn_clean_vars | tr '\n' ' ')
+  vars=${vars% }
+  if [ "$A_SHOW" = 1 ]; then
+    printf '# source: %s (%s)\n' "${S_PROVIDER:-account}" "$S_LABEL"
+    printf 'unset %s\n' "$vars"
+    i=0
+    while [ "$i" -lt "${#E_NAMES[@]}" ]; do
+      printf 'export %s=%s\n' "${E_NAMES[$i]}" "$(harn_q "${E_SHOWN[$i]}")"
+      i=$((i + 1))
+    done
+    printf 'exec'
+    for a in "${X_ARGV[@]}"; do printf ' %s' "$(harn_q "$a")"; done
+    printf '\n'
+    exit 0
+  fi
+  command -v "${X_ARGV[0]}" >/dev/null 2>&1 \
+    || harn_die 2 "'${X_ARGV[0]}' is not on PATH" "install it, or fix its binary in $HARN_CONFIG_PATH"
+  # shellcheck disable=SC2086 # names are identifiers; splitting is intended
+  unset $vars
+  i=0
+  while [ "$i" -lt "${#E_NAMES[@]}" ]; do
+    export "${E_NAMES[$i]}=${E_VALUES[$i]}"
+    i=$((i + 1))
+  done
+  exec "${X_ARGV[@]}"
+}
+
+# --- main
+
+harn_main() {
+  harn_require jq
+  case ${1:-} in
+    --version) printf 'harn %s\n' "$HARN_VERSION"; exit 0 ;;
+  esac
+  harn_load_config
+  harn_parse "$@"
+  harn_check_harness
+  harn_resolve_source
+  E_NAMES=() E_VALUES=() E_SHOWN=() X_ARGV=()
+  case $S_KIND in
+    account) harn_kind_account ;;
+    *) harn_die 2 "provider '$S_PROVIDER' has unknown kind '$S_KIND'" "kind is one of: endpoint, launcher" ;;
+  esac
+  if [ "$(harn_harness_field wire)" = anthropic ] && [ "$S_KIND" != launcher ]; then
+    harn_warn_claude_settings
+  fi
+  harn_run
+}
+
+harn_main "$@"

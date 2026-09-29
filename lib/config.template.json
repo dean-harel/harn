@@ -1,39 +1,45 @@
 {
-  "active": {
-    "gateway": "openrouter",
-    "local":   "ollama"
-  },
-
-  "secrets": {
-    "op": { "command": "op read" }
-  },
-
-  "gateway": {
+  "slots": { "gw": "openrouter", "local": "ollama" },
+  "providers": {
     "openrouter": {
-      "key_ref": "op://<vault>/<item>/<field>",
+      "kind": "endpoint",
+      "label": "api",
+      "login": "openrouter-pkce",
+      "default_model": "anthropic/claude-sonnet-5",
       "anthropic_wire": { "base_url": "https://openrouter.ai/api" },
-      "openai_wire":    { "base_url": "https://openrouter.ai/api/v1", "wire_api": "responses" }
-    }
+      "openai_wire": { "base_url": "https://openrouter.ai/api/v1", "wire_api": "responses" }
+    },
+    "ollama-cloud": {
+      "kind": "endpoint",
+      "label": "api",
+      "login": "paste",
+      "default_model": "glm-5.3-flash",
+      "anthropic_wire": { "base_url": "https://ollama.com" },
+      "openai_wire": { "base_url": "https://ollama.com/v1", "wire_api": "responses" }
+    },
+    "anthropic": {
+      "kind": "endpoint",
+      "label": "api",
+      "login": "paste",
+      "default_model": "claude-sonnet-5",
+      "anthropic_wire": { "base_url": "https://api.anthropic.com", "key_env": "ANTHROPIC_API_KEY" }
+    },
+    "ollama": { "kind": "launcher", "label": "local", "launcher": ["ollama", "launch"] }
   },
-
-  "local": {
-    "ollama": { "launcher": "ollama launch" }
-  },
-
   "harness": {
-    "claude": { "wire": "anthropic", "binary": "claude", "supports": ["account","gw","local"], "default": "account" },
-    "codex":  { "wire": "openai",    "binary": "codex",  "supports": ["account","gw","local"], "default": "account",
-                "gw_argv": [
-                  "-c", "model_providers.{gw}.name={gw}",
-                  "-c", "model_providers.{gw}.base_url={base_url}",
-                  "-c", "model_providers.{gw}.env_key={key_env}",
-                  "-c", "model_providers.{gw}.wire_api={wire_api}",
-                  "-c", "model_provider={gw}",
-                  "--model", "{model}"
-                ] },
-    "pi":     { "wire": "openai",    "binary": "pi",     "supports": ["gw","local"],            "default": null,
-                "gw_argv": ["--provider", "{gw}", "--model", "{model}"] },
-    "hermes": { "wire": "openai",    "binary": "hermes", "supports": ["gw","local"],            "default": null,
-                "gw_argv": ["chat", "--provider", "{gw}", "--model", "{model}"] }
+    "claude": { "wire": "anthropic", "binary": "claude", "account": true },
+    "codex": {
+      "wire": "openai", "binary": "codex", "account": true,
+      "gw_argv": [
+        "-c", "model_providers.{provider}.name={provider}",
+        "-c", "model_providers.{provider}.base_url={base_url}",
+        "-c", "model_providers.{provider}.env_key={key_env}",
+        "-c", "model_providers.{provider}.wire_api={wire_api}",
+        "-c", "model_provider={provider}",
+        "--model", "{model}"
+      ]
+    },
+    "pi": { "wire": "openai", "binary": "pi", "gw_argv": ["--provider", "{provider}", "--model", "{model}"] },
+    "hermes": { "wire": "openai", "binary": "hermes", "gw_argv": ["chat", "--provider", "{provider}", "--model", "{model}"] }
   }
 }
