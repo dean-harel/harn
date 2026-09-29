@@ -166,6 +166,19 @@ harn_kind_endpoint() {
   X_ARGV+=(${A_PASS[@]+"${A_PASS[@]}"})
 }
 
+harn_kind_launcher() {
+  local a
+  [ "$(harn_pfield '.launcher | type')" = array ] || harn_die 2 "providers.$S_PROVIDER.launcher must be an argv array" \
+    "for example: [\"ollama\", \"launch\"]"
+  X_ARGV=()
+  while IFS= read -r a; do X_ARGV+=("$a"); done < <(harn_pfield '.launcher[]')
+  [ ${#X_ARGV[@]} -gt 0 ] || harn_die 2 "providers.$S_PROVIDER.launcher is empty"
+  X_ARGV+=("$A_HARNESS")
+  A_MODEL=${A_MODEL:-$(harn_pfield .default_model)}
+  [ -z "$A_MODEL" ] || X_ARGV+=(--model "$A_MODEL")
+  [ ${#A_PASS[@]} -eq 0 ] || X_ARGV+=(-- "${A_PASS[@]}")
+}
+
 # --- environment
 
 harn_key_env() {
@@ -291,6 +304,7 @@ harn_main() {
   case $S_KIND in
     account) harn_kind_account ;;
     endpoint) harn_kind_endpoint ;;
+    launcher) harn_kind_launcher ;;
     *) harn_die 2 "provider '$S_PROVIDER' has unknown kind '$S_KIND'" "kind is one of: endpoint, launcher" ;;
   esac
   if [ "$(harn_harness_field wire)" = anthropic ] && [ "$S_KIND" != launcher ]; then
