@@ -384,12 +384,58 @@ harn_login_pkce() {
   printf 'harn: stored the key for %s in %s\n' "$p" "$b" >&2
 }
 
+# --- subcommands
+
+harn_help() {
+  cat <<'EOF'
+usage: harn <harness> [<source>] [<model>] [--show] [-- <args>...]
+
+Sources:
+  (none) or account     the harness's own subscription login
+  gw, local             whatever that slot points at in the config
+  <provider>            a named provider, for a one-off
+
+Commands:
+  harn login <provider> [--no-open]
+  harn key <provider>          print the provider's key, for reuse by another command
+  harn config                  print the resolved config
+  harn config init [--force]   write the template config
+  harn config edit             open the config in $EDITOR
+  harn --version
+
+Examples:
+  harn claude
+  harn claude gw
+  harn codex gw openai/gpt-6-sol
+  harn claude local qwen3-coder -- -p "hello"
+  harn claude ollama-cloud --show
+EOF
+}
+
+harn_cmd_config() {
+  case ${1:-} in
+    '') harn_load_config; jq . <<<"$HARN_CFG" ;;
+    edit) exec "${EDITOR:-vi}" "$HARN_CONFIG_PATH" ;;
+    init)
+      if [ -e "$HARN_CONFIG_PATH" ] && [ "${2:-}" != --force ]; then
+        harn_die 2 "$HARN_CONFIG_PATH already exists" "pass --force to overwrite it"
+      fi
+      mkdir -p "$(dirname "$HARN_CONFIG_PATH")" && cp "$HARN_TEMPLATE" "$HARN_CONFIG_PATH" \
+        || harn_die 2 "cannot write $HARN_CONFIG_PATH"
+      printf 'wrote %s\n' "$HARN_CONFIG_PATH"
+      ;;
+    *) harn_die 2 "unknown config subcommand '$1'" "use: harn config [init [--force] | edit]" ;;
+  esac
+}
+
 # --- main
 
 harn_main() {
   harn_require jq
   case ${1:-} in
     --version) printf 'harn %s\n' "$HARN_VERSION"; exit 0 ;;
+    --help|-h|help) harn_help; exit 0 ;;
+    config) shift; harn_cmd_config "$@"; exit $? ;;
     --pkce-selftest)
       [ -n "${HARN_PKCE_SELFTEST:-}" ] || harn_die 2 "--pkce-selftest needs HARN_PKCE_SELFTEST"
       harn_require openssl
