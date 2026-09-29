@@ -123,6 +123,49 @@ harn_kind_account() {
   X_ARGV+=(${A_PASS[@]+"${A_PASS[@]}"})
 }
 
+harn_kind_endpoint() {
+  local wire bin base model key_env name wire_api tok
+  local tp='{provider}' tm='{model}' tb='{base_url}' tk='{key_env}' tw='{wire_api}'
+  wire=$(harn_harness_field wire)
+  bin=$(harn_harness_field binary)
+  base=$(harn_pfield ".${wire}_wire.base_url")
+  [ -n "$base" ] || harn_die 2 "provider '$S_PROVIDER' has no ${wire}_wire, which $A_HARNESS needs" \
+    "set providers.$S_PROVIDER.${wire}_wire.base_url in $HARN_CONFIG_PATH"
+  model=${A_MODEL:-$(harn_pfield .default_model)}
+  [ -n "$model" ] || harn_die 2 "no model given and provider '$S_PROVIDER' has no default" \
+    "pass one: harn $A_HARNESS $A_SOURCE <model>" "or set providers.$S_PROVIDER.default_model"
+  key_env=$(harn_key_env "$wire" "$S_PROVIDER")
+  harn_credential
+  case $wire in
+    anthropic)
+      harn_setenv ANTHROPIC_BASE_URL "$base"
+      harn_setenv "$key_env" "$C_VALUE" "$C_SHOWN"
+      if [ "$key_env" = ANTHROPIC_API_KEY ]; then
+        harn_setenv ANTHROPIC_AUTH_TOKEN ''
+      else
+        harn_setenv ANTHROPIC_API_KEY ''
+      fi
+      X_ARGV=("$bin" --model "$model")
+      ;;
+    openai)
+      harn_setenv "$key_env" "$C_VALUE" "$C_SHOWN"
+      name=$(cfg --arg p "$S_PROVIDER" --arg h "$A_HARNESS" '.providers[$p].harness_names[$h] // $p')
+      wire_api=$(harn_pfield '.openai_wire.wire_api // "responses"')
+      X_ARGV=("$bin")
+      while IFS= read -r tok; do
+        tok=${tok//"$tp"/$name}
+        tok=${tok//"$tm"/$model}
+        tok=${tok//"$tb"/$base}
+        tok=${tok//"$tk"/$key_env}
+        tok=${tok//"$tw"/$wire_api}
+        X_ARGV+=("$tok")
+      done < <(cfg --arg h "$A_HARNESS" '(.harness[$h].gw_argv // ["--provider", "{provider}", "--model", "{model}"])[]')
+      ;;
+    *) harn_die 2 "harness '$A_HARNESS' has unknown wire '$wire'" "wire is one of: anthropic, openai" ;;
+  esac
+  X_ARGV+=(${A_PASS[@]+"${A_PASS[@]}"})
+}
+
 # --- environment
 
 harn_key_env() {
@@ -158,6 +201,40 @@ harn_warn_claude_settings() {
   done
   return 0
 }
+
+# --- credentials
+
+harn_credential() {
+  local login has_cmd
+  login=$(harn_pfield .login)
+  has_cmd=$(harn_pfield '.key_command // empty | length')
+  [ -z "$login" ] || [ -z "$has_cmd" ] || harn_die 2 "provider '$S_PROVIDER' sets both login and key_command" "keep one in $HARN_CONFIG_PATH"
+  [ -n "$login" ] || [ -n "$has_cmd" ] || harn_die 2 "provider '$S_PROVIDER' has no credential" \
+    "set providers.$S_PROVIDER.login or providers.$S_PROVIDER.key_command"
+  if [ -n "$login" ]; then
+    C_SHOWN="<redacted: login $login>"
+  else
+    C_SHOWN="<redacted: key_command $(harn_pfield '.key_command | join(" ")')>"
+  fi
+  C_VALUE=''
+  [ "$A_SHOW" = 1 ] && return 0
+  C_VALUE=$(harn_key_value "$S_PROVIDER") || exit 2
+}
+
+harn_key_value() {
+  local p=$1 argv=() a out
+  if [ -n "$(cfg --arg p "$p" '.providers[$p].key_command // empty | length')" ]; then
+    while IFS= read -r a; do argv+=("$a"); done < <(cfg --arg p "$p" '.providers[$p].key_command[]')
+    [ ${#argv[@]} -gt 0 ] || harn_die 2 "providers.$p.key_command is empty"
+    out=$("${argv[@]}") || harn_die 2 "key_command for '$p' failed" "command: ${argv[*]}"
+    [ -n "$out" ] || harn_die 2 "key_command for '$p' printed nothing" "command: ${argv[*]}"
+    printf '%s' "$out"
+    return 0
+  fi
+  harn_store_read "$p"
+}
+
+harn_store_read() { harn_die 2 "no stored key for '$1'" "run: harn login $1"; }
 
 # --- run
 
@@ -213,6 +290,7 @@ harn_main() {
   E_NAMES=() E_VALUES=() E_SHOWN=() X_ARGV=()
   case $S_KIND in
     account) harn_kind_account ;;
+    endpoint) harn_kind_endpoint ;;
     *) harn_die 2 "provider '$S_PROVIDER' has unknown kind '$S_KIND'" "kind is one of: endpoint, launcher" ;;
   esac
   if [ "$(harn_harness_field wire)" = anthropic ] && [ "$S_KIND" != launcher ]; then
