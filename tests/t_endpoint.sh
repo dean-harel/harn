@@ -46,6 +46,7 @@ a=$(HARN_CONFIG="$kc" "$HARN" claude gw --show 2>&1)
 sw=$(cfgwith '.slots.gw = "ollama-cloud" | .providers.openrouter |= (del(.login) | .key_command = ["printf", "%s", "sk-test-1"]) | .providers["ollama-cloud"] |= (del(.login) | .key_command = ["printf", "%s", "sk-oc-1"])')
 b=$(HARN_CONFIG="$sw" "$HARN" claude gw --show 2>&1)
 has "swap: new base url" "$b" "ANTHROPIC_BASE_URL=https://ollama.com"
+lacks "swap: old base url gone" "$b" "$(printf '%s\n' "$a" | grep '^export ANTHROPIC_BASE_URL')"
 has "swap: same key variable" "$b" "export ANTHROPIC_AUTH_TOKEN="
 has "swap: new default model" "$b" "exec claude --model glm-5.3-flash"
 lacks "swap: nothing from openrouter" "$b" "openrouter"

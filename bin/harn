@@ -1,6 +1,7 @@
 #!/bin/bash
 # harn: one command for any AI coding harness, against a subscription, a gateway or a local model.
 # Must run under macOS /bin/bash 3.2: no mapfile, no associative arrays, empty arrays as ${a[@]+"${a[@]}"}.
+# shellcheck disable=SC2016 # jq filters are single-quoted on purpose
 set -u
 
 HARN_VERSION="0.0.0-dev" # x-release-please-version
@@ -420,8 +421,9 @@ harn_cmd_config() {
       if [ -e "$HARN_CONFIG_PATH" ] && [ "${2:-}" != --force ]; then
         harn_die 2 "$HARN_CONFIG_PATH already exists" "pass --force to overwrite it"
       fi
-      mkdir -p "$(dirname "$HARN_CONFIG_PATH")" && cp "$HARN_TEMPLATE" "$HARN_CONFIG_PATH" \
-        || harn_die 2 "cannot write $HARN_CONFIG_PATH"
+      if ! mkdir -p "$(dirname "$HARN_CONFIG_PATH")" || ! cp "$HARN_TEMPLATE" "$HARN_CONFIG_PATH"; then
+        harn_die 2 "cannot write $HARN_CONFIG_PATH"
+      fi
       printf 'wrote %s\n' "$HARN_CONFIG_PATH"
       ;;
     *) harn_die 2 "unknown config subcommand '$1'" "use: harn config [init [--force] | edit]" ;;

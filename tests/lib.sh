@@ -14,6 +14,7 @@ bad() { T_FAIL=$((T_FAIL + 1)); printf 'FAIL: %s\n' "$1"; [ $# -lt 2 ] || printf
 has()   { case $2 in *"$3"*) ok "$1" ;; *) bad "$1" "$2" ;; esac; }
 lacks() { case $2 in *"$3"*) bad "$1" "$2" ;; *) ok "$1" ;; esac; }
 code()  { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "exit $2, want $3"; fi; }
+# shellcheck disable=SC2034 # OUT and RC are read by the sourced test files
 run()   { OUT=$("$HARN" "$@" 2>&1); RC=$?; }
 cfgwith() { local f; f=$(mktemp); jq "$1" "$ROOT/lib/config.template.json" > "$f"; printf '%s' "$f"; }
 stub()  { printf '#!/bin/bash\n%s\n' "$2" > "$STUBS/$1"; chmod +x "$STUBS/$1"; }

@@ -1,0 +1,3 @@
+# ok and bad always succeed, so `cond && ok || bad` is safe; jq filters are single-quoted on purpose.
+disable=SC2015,SC2016
+source-path=SCRIPTDIR
