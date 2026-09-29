@@ -376,7 +376,8 @@ harn_login_pkce() {
   printf 'Code: ' >&2
   IFS= read -r code || true
   [ -n "$code" ] || harn_die 2 "no code entered"
-  body=$(jq -cn --arg c "$code" --arg v "$verifier" '{code: $c, code_verifier: $v, code_challenge_method: "S256"}')
+  # Through the environment, so neither value reaches jq's argv.
+  body=$(HARN_C=$code HARN_V=$verifier jq -cn '{code: env.HARN_C, code_verifier: env.HARN_V, code_challenge_method: "S256"}')
   resp=$(printf '%s' "$body" | curl -sS --fail-with-body -X POST https://openrouter.ai/api/v1/auth/keys \
     -H 'Content-Type: application/json' --data @-) || true
   key=$(printf '%s' "$resp" | jq -r '.key // empty' 2>/dev/null)

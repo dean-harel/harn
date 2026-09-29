@@ -31,3 +31,15 @@ OUT=$(printf 'bad\n' | PATH="$STUBS:$PATH" "$HARN" login openrouter --no-open 2>
 code "response without key" "$RC" 2
 has "shows the API error" "$OUT" "invalid code"
 rm -f "$XDG_STATE_HOME/harn/keys/openrouter"
+
+# The code and verifier reach no process's argv, jq's included.
+rec2=$(mktemp -d)
+realjq=$(command -v jq)
+stub curl "cat > '$rec2/stdin'; printf '{\"key\":\"sk-or-2\"}'"
+stub jq "printf '%s\n' \"\$@\" >> '$rec2/jqargv'; exec '$realjq' \"\$@\""
+printf 'code-in-argv-probe\n' | PATH="$STUBS:$PATH" "$HARN" login openrouter --no-open >/dev/null 2>&1
+rm -f "$STUBS/jq"
+lacks "code not on jq argv" "$(cat "$rec2/jqargv")" "code-in-argv-probe"
+v2=$(jq -r .code_verifier "$rec2/stdin")
+lacks "verifier not on jq argv" "$(cat "$rec2/jqargv")" "$v2"
+rm -f "$XDG_STATE_HOME/harn/keys/openrouter"
