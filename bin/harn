@@ -247,7 +247,26 @@ harn_key_value() {
   harn_store_read "$p"
 }
 
-harn_store_read() { harn_die 2 "no stored key for '$1'" "run: harn login $1"; }
+# --- key store
+
+harn_store_file() { printf '%s/harn/keys/%s' "${XDG_STATE_HOME:-$HOME/.local/state}" "$1"; }
+
+harn_store_write() {
+  local f key
+  f=$(harn_store_file "$1")
+  key=$(cat; printf x)
+  key=${key%x}
+  (umask 077 && mkdir -p "$(dirname "$f")" && printf '%s' "$key" > "$f") \
+    || harn_die 3 "cannot write $f"
+  printf '%s\n' "$f"
+}
+
+harn_store_read() {
+  local f
+  f=$(harn_store_file "$1")
+  [ -r "$f" ] || harn_die 2 "no stored key for '$1'" "run: harn login $1"
+  cat "$f"
+}
 
 # --- run
 
@@ -289,12 +308,56 @@ harn_run() {
   exec "${X_ARGV[@]}"
 }
 
+# --- logins
+
+harn_provider_exists() {
+  [ -n "$(cfg --arg p "$1" '.providers[$p].kind // empty')" ] || harn_die 2 "unknown provider '$1'" \
+    "known: $(cfg '.providers // {} | keys | join(", ")')"
+}
+
+harn_cmd_login() {
+  local p=${1:-} login
+  [ -n "$p" ] || harn_die 2 "usage: harn login <provider> [--no-open]"
+  shift
+  harn_provider_exists "$p"
+  login=$(cfg --arg p "$p" '.providers[$p].login // empty')
+  case $login in
+    paste) harn_login_paste "$p" ;;
+    openrouter-pkce) harn_login_pkce "$p" "$@" ;;
+    '') harn_die 2 "provider '$p' has no login" "it uses key_command; nothing to store" ;;
+    *) harn_die 2 "provider '$p' has unknown login '$login'" "login is one of: openrouter-pkce, paste" ;;
+  esac
+}
+
+harn_login_paste() {
+  local p=$1 key b
+  printf 'Paste the key for %s (input hidden): ' "$p" >&2
+  IFS= read -rs key || true
+  printf '\n' >&2
+  [ -n "$key" ] || harn_die 2 "no key entered"
+  b=$(printf '%s' "$key" | harn_store_write "$p") || exit $?
+  printf 'harn: stored the key for %s in %s\n' "$p" "$b" >&2
+}
+
+harn_cmd_key() {
+  [ -n "${1:-}" ] || harn_die 2 "usage: harn key <provider>"
+  harn_provider_exists "$1"
+  harn_key_value "$1"
+  printf '\n'
+}
+
+harn_login_pkce() { harn_die 3 "openrouter-pkce is not implemented yet"; }
+
 # --- main
 
 harn_main() {
   harn_require jq
   case ${1:-} in
     --version) printf 'harn %s\n' "$HARN_VERSION"; exit 0 ;;
+  esac
+  case ${1:-} in
+    login) shift; harn_load_config; harn_cmd_login "$@"; exit $? ;;
+    key) shift; harn_load_config; harn_cmd_key "$@"; exit $? ;;
   esac
   harn_load_config
   harn_parse "$@"
