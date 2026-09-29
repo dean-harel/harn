@@ -49,9 +49,6 @@ harn_load_config() {
   [ -r "$src" ] || src=$HARN_TEMPLATE
   HARN_CFG=$(cat "$src") || harn_die 2 "cannot read $src"
   jq -e . >/dev/null 2>&1 <<<"$HARN_CFG" || harn_die 2 "$src is not valid JSON"
-  if jq -e '(has("gateway") or has("active")) and (has("providers") | not)' >/dev/null <<<"$HARN_CFG"; then
-    harn_die 2 "$src uses the legacy schema" "see https://github.com/dean-harel/harn/blob/main/MIGRATION.md, or back it up and run: harn config init --force"
-  fi
   bad=$(jq -r '.providers // {} | keys[] | select(. == "gw" or . == "local" or . == "account")' <<<"$HARN_CFG" | head -n 1)
   [ -z "$bad" ] || harn_die 2 "provider name '$bad' is reserved" "rename providers.$bad in $src"
 }

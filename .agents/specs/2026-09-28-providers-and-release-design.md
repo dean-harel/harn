@@ -6,7 +6,7 @@ Status: in review (design phase)
 
 Make harn a tool a team can adopt: one command for any harness against a subscription, a
 gateway API or a local model, with credentials handled, released and installable on macOS and
-Linux. This is release 0.1.0 and breaks the current config schema. It stays on 0.x until the
+Linux. This is release 0.1.0. It stays on 0.x until the
 first cohort's use has shaped the schema, since a 0.x minor release can still break it cheaply.
 
 ## Value
@@ -289,26 +289,3 @@ Settled before any code; each answer and its consequence:
    `--api-key`; `hermes chat` has `--provider`, resolved from its built-ins or `providers:` in
    its own config), so they reach only providers their registry knows, through
    `harness_names`, and the README says so.
-
-## Migration
-
-0.1.0 drops `active`, `gateway`, `local`, `secrets`, `key_ref`, `supports`, `harness.<h>.default`
-and `gateway.<n>.key_env`. `MIGRATION.md` at the repository root maps each, since release-please
-owns `CHANGELOG.md`:
-
-- `active.gateway` becomes `slots.gw`, and `active.local` becomes `slots.local`.
-- `gateway.<n>` becomes a `providers.<n>` entry of kind `endpoint`, and its `key_env` moves to
-  `openai_wire.key_env`, the only wire the old field applied to.
-- `key_ref` plus `secrets.<scheme>.command` always becomes `key_command`: the command string
-  split on whitespace, then the `key_ref` appended (`"op read"` and `op://...` become
-  `["op","read","op://..."]`). Switching that provider to a `login` afterwards is optional.
-- `{gw}` inside any `harness.<h>.gw_argv` becomes `{provider}`.
-- `local.<n>.launcher` becomes a `launcher` provider, its string split on whitespace
-  (`"ollama launch"` becomes `["ollama","launch"]`).
-- `supports` becomes `account: true` only where it listed `account`.
-- `harness.<h>.default` goes: no source always means the subscription, and a user who defaulted
-  to `gw` or `local` types the slot.
-- The install changes: remove the `source .../lib/harn.zsh` line from the shell startup file
-  and install `bin/harn` as above. Through the 0.x releases, `lib/harn.zsh` stays as a stub that
-  defines nothing and prints that instruction to stderr, so an old startup file keeps working
-  and says what to change.

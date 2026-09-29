@@ -60,15 +60,7 @@ rm -f "$HOME/.claude/settings.json"
 run claude --show
 lacks "no warning without settings env" "$OUT" "warning:"
 
-# Review Focus 3: a legacy config exits 2 with the migration pointer.
-old=$(mktemp)
-printf '{"active":{"gateway":"openrouter"},"gateway":{},"harness":{}}' > "$old"
-OUT=$(HARN_CONFIG="$old" "$HARN" claude --show 2>&1); RC=$?
-code "legacy config is a config error" "$RC" 2
-has "legacy config names the migration" "$OUT" "uses the legacy schema"
-has "legacy config points at the guide" "$OUT" "MIGRATION.md"
-
-# A slot must name one provider (the object form is built only after a no on verify-first item 1).
+# A slot must name one provider.
 OUT=$(HARN_CONFIG=$(cfgwith '.slots.gw = {"*": "openrouter"}') "$HARN" claude gw --show 2>&1); RC=$?
 code "object slot is a config error" "$RC" 2
 has "object slot names the field" "$OUT" "slots.gw must be a provider name"

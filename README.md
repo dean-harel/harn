@@ -126,12 +126,6 @@ valid. Logging in again overwrites the file.
   their own registry knows. Claude Code and Codex reach any provider.
 - Local models need Ollama installed; `ollama launch` pulls the model on first use.
 
-## Upgrading from the zsh function
-
-Remove the `source .../lib/harn.zsh` line from your shell startup file and install `bin/harn` as
-above. The old config schema is refused with a pointer to [MIGRATION.md](MIGRATION.md), which
-maps every field.
-
 ## Develop
 
 ```bash

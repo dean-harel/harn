@@ -27,8 +27,7 @@ HARN_PKCE_SELFTEST with --pkce-selftest exposes the PKCE math.
 
 bin/harn is sectioned in order: messages, paths, config, parsing, sources, kinds, environment,
 credentials, key store, logins, run, subcommands, main. lib/config.template.json is the shipped
-config. MIGRATION.md maps the legacy config. lib/harn.zsh is a stub for startup files from the zsh-function era. Formula/harn.rb makes
-the repository its own Homebrew tap. Specs and plans are in .agents/.
+config. Formula/harn.rb makes the repository its own Homebrew tap. Specs and plans are in .agents/.
 
 ## Conventions
 
