@@ -1,12 +1,12 @@
-# harn 1.0: Providers, Credentials and Release Implementation Plan
+# harn 0.1: Providers, Credentials and Release Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the sourced zsh function with a released `bin/harn` executable that runs any harness against a subscription, a gateway API or a local model, with credentials handled.
 
-**Architecture:** One bash 3.2 script, `bin/harn`, reads a JSON config with `jq`. A run resolves a source (the subscription, a slot or a named provider) to one of three kinds (`account`, `endpoint`, `launcher`), builds an environment and an argv, and either prints them (`--show`) or execs. Credentials come from a login adapter (`openrouter-pkce`, `paste`) backed by a key store (keychain, libsecret, file) or from a `key_command`.
+**Architecture:** One bash 3.2 script, `bin/harn`, reads a JSON config with `jq`. A run resolves a source (the subscription, a slot or a named provider) to one of three kinds (`account`, `endpoint`, `launcher`), builds an environment and an argv, and either prints them (`--show`) or execs. Credentials come from a login (`openrouter-pkce`, `paste`) that stores the key in a 0600 file, or from a `key_command`.
 
-**Tech Stack:** bash 3.2 (macOS `/bin/bash`), `jq`, `curl`, `openssl`; GitHub Actions; release-please; a Homebrew tap.
+**Tech Stack:** bash 3.2 (macOS `/bin/bash`), `jq`, `curl`, `openssl`; GitHub Actions; release-please; the repository as its own Homebrew tap.
 
 **Spec:** `.agents/specs/2026-09-28-providers-and-release-design.md`
 
@@ -19,20 +19,21 @@
 - Every command-shaped config field (`launcher`, `key_command`) is an argv array.
 - Nothing in the test suite launches a real harness or reaches the network.
 - Conventional Commits; no attribution trailers; ASCII only in files.
-- Work happens on branch `feat/providers-1.0` in `~/Developer/personal/harn`. Pushing, opening a PR, creating the tap repository, adding a secret and merging a release PR are outward acts: stop and ask before each.
+- Work happens on branch `feat/providers` in `~/Developer/personal/harn`. Pushing, opening a PR and merging a release PR are outward acts: stop and ask before each.
+- The first release is 0.1.0. The slot object form and `harness_names` are built only if Task 1 answers no to the spec's verify-first item 1 or 2.
 
 ## Review Focus
 
 1. A passthrough argument with spaces, quotes or an empty string survives both the real exec and the `--show` line when that line is pasted into a shell. Pinned in Task 2.
 2. A `key_command` argument containing a space reaches the command as one argument. Pinned in Task 3.
-3. A user whose live config is still the 0.x schema (`active`, `gateway`, no `providers`) gets an exit 2 pointing at the migration, never a `jq` error. Pinned in Task 2.
+3. A user whose live config is still the legacy schema (`active`, `gateway`, no `providers`) gets an exit 2 pointing at the migration, never a `jq` error. Pinned in Task 2.
 4. A pasted key comes back from the store byte for byte, with no added newline, and the file is mode 0600. Pinned in Task 5.
 5. `harn` run through a symlink (the Homebrew layout) still finds `lib/config.template.json`. Pinned in Task 7.
 
 ## File Structure
 
 - `bin/harn`: the whole tool. Sections in order: header and version, messages, paths, config, parsing, sources, kinds, credentials, key store, logins, run, subcommands, main.
-- `lib/config.template.json`: the shipped template, rewritten to the 1.0 schema.
+- `lib/config.template.json`: the shipped template, rewritten to the 0.1 schema.
 - `lib/harn.zsh`: reduced to a stub that tells an old install what to change.
 - `tests/lib.sh`: assertion helpers and an isolated `HOME`.
 - `tests/run.sh`: runs every `tests/t_*.sh` and prints the tally.
@@ -40,27 +41,27 @@
 - `tests/dry-run.sh`: deleted in Task 2; its cases are rewritten across the task files.
 - `.github/workflows/ci.yml`, `.github/workflows/pr-title.yml`, `.github/workflows/release.yml`.
 - `release-please-config.json`, `.release-please-manifest.json`.
+- `Formula/harn.rb`: the Homebrew formula; the repository is its own tap.
 - `README.md`, `AGENTS.md` (with `CLAUDE.md` symlink), `CONTRIBUTING.md`, `SECURITY.md`, `.github/ISSUE_TEMPLATE/bug.yml`, `.github/ISSUE_TEMPLATE/feature.yml`.
-- Separate repository `dean-harel/homebrew-tap`: `Formula/harn.rb`.
 
 ---
 
-### Task 1: Settle the three local unknowns
+### Task 1: Settle the two local unknowns
 
-The spec's "Verify first" items 1 to 3 decide parts of Tasks 3 to 5, so they are answered before any code. Item 4 needs the PKCE code and a real browser login; it closes Task 6.
+The spec's "Verify first" items 1 and 2 decide parts of Tasks 2 to 4, so they are answered before any code.
 
 **Files:**
 - Modify: `.agents/specs/2026-09-28-providers-and-release-design.md` ("Verify first")
 
 **Interfaces:**
-- Produces: three recorded answers that Tasks 3, 4 and 5 read: `LAUNCH_PI_HERMES` (yes or no), `PI_HERMES_BASE_URL` (the flag, or no), `KEYCHAIN_STDIN` (yes or no).
+- Produces: two recorded answers that Tasks 2, 3 and 4 read: `LAUNCH_PI_HERMES` (yes or no), `PI_HERMES_BASE_URL` (the flag, or no).
 
 - [ ] **Step 1: Create the branch**
 
 ```bash
-cd ~/Developer/personal/harn && git switch -c feat/providers-1.0
+cd ~/Developer/personal/harn && git switch -c feat/providers
 ```
-Expected: `Switched to a new branch 'feat/providers-1.0'`
+Expected: `Switched to a new branch 'feat/providers'`
 
 - [ ] **Step 2: Item 1, does `ollama launch` support pi and hermes**
 
@@ -76,27 +77,18 @@ pi --help 2>&1 | grep -n -i -E 'base.?url|provider|api.?key|models' ; hermes cha
 ```
 Expected: flag lines. Record `PI_HERMES_BASE_URL` as the exact flag per harness (for example `pi: --base-url`) or `no`.
 
-- [ ] **Step 4: Item 3, can the keychain be written without the secret on argv**
+- [ ] **Step 4: Record the answers in the spec**
 
-```bash
-printf 'add-generic-password -U -s harn-probe -a probe -w "probe value 1"\n' | security -i
-security find-generic-password -s harn-probe -a probe -w
-security delete-generic-password -s harn-probe -a probe >/dev/null && echo deleted
-```
-Expected: the second command prints `probe value 1`, the third prints `deleted`. The secret only ever travelled on the stdin of `security -i`, whose argv is `-i`. Record `KEYCHAIN_STDIN=yes` if all three hold.
-
-- [ ] **Step 5: Record the answers in the spec**
-
-Replace items 1 to 3 of "Verify first" with the settled answers, each as one sentence plus the consequence the spec already names. Example for a yes on item 3:
+Replace items 1 and 2 of "Verify first" with the settled answers, each as one sentence plus the consequence the spec already names. Example for a yes on item 2:
 
 ```markdown
-3. Settled: `security -i` reads `add-generic-password ... -w "<key>"` from stdin, so the keychain
-   backend ships in 1.0; a key containing `"` or a newline is refused with exit 2.
+2. Settled: pi takes `--base-url` and hermes takes `--base-url` after `chat`, so both `gw_argv`
+   carry `{base_url}` and swap to any provider; `harness_names` is not built.
 ```
 
-For a no on item 1, also add the `ollama-api` provider and the object-valued `slots.local` to the spec's template block exactly as item 1 describes.
+For a no on item 1, also add the `ollama-api` provider and the object-valued `slots.local` to the spec's template block, and move the slot object form from verify-first item 1 into the Config section's Slots bullet. For a no on item 2, move `harness_names` into the Config section the same way.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add .agents/specs/2026-09-28-providers-and-release-design.md
@@ -129,7 +121,7 @@ Ends with `harn claude --show` and `harn claude` (against a stub) working from t
   - `harn_key_env WIRE PROVIDER`
 - Produces, in `tests/lib.sh`: `run ARGS...` (sets `OUT`, `RC`), `has NAME HAYSTACK NEEDLE`, `lacks NAME HAYSTACK NEEDLE`, `code NAME GOT WANT`, `cfgwith JQ_FILTER` (prints a temp config path), `stub NAME SCRIPT` (writes an executable into `$STUBS`), `$ROOT`, `$STUBS`.
 
-- [ ] **Step 1: Rewrite the template to the 1.0 schema**
+- [ ] **Step 1: Rewrite the template to the 0.1 schema**
 
 `lib/config.template.json`:
 
@@ -181,7 +173,17 @@ Ends with `harn claude --show` and `harn claude` (against a stub) working from t
 }
 ```
 
-Apply Task 1's answers: with `LAUNCH_PI_HERMES=no`, add the `ollama-api` provider and the object-valued `slots.local` from the spec; with a `PI_HERMES_BASE_URL` flag, add `"<flag>", "{base_url}"` to that harness's `gw_argv`.
+Apply Task 1's answers: with `LAUNCH_PI_HERMES=no`, add the `ollama-api` provider and the object-valued `slots.local` from the spec, and in Step 5 use the object-aware slot lookup below; with a `PI_HERMES_BASE_URL` flag, add `"<flag>", "{base_url}"` to that harness's `gw_argv`.
+
+Object-aware slot lookup, only for `LAUNCH_PI_HERMES=no` (it replaces the `gw|local)` branch of `harn_resolve_source`, and the "object slot is a config error" test is replaced by the two "slot object" tests shown in Task 3):
+
+```bash
+    gw|local)
+      S_PROVIDER=$(cfg --arg s "$A_SOURCE" --arg h "$A_HARNESS" \
+        '.slots[$s] // empty | if type == "object" then (.[$h] // .["*"] // empty) else . end')
+      [ -n "$S_PROVIDER" ] || harn_die 2 "slot '$A_SOURCE' has no provider for $A_HARNESS" "set slots.$A_SOURCE in $HARN_CONFIG_PATH"
+      ;;
+```
 
 - [ ] **Step 2: Write the test helpers**
 
@@ -198,7 +200,6 @@ STUBS=$(mktemp -d)
 export HOME
 export XDG_CONFIG_HOME="$HOME/.config" XDG_STATE_HOME="$HOME/.local/state"
 export HARN_CONFIG="$ROOT/lib/config.template.json"
-export HARN_KEY_BACKENDS=file
 
 ok()  { T_PASS=$((T_PASS + 1)); printf 'PASS: %s\n' "$1"; }
 bad() { T_FAIL=$((T_FAIL + 1)); printf 'FAIL: %s\n' "$1"; [ $# -lt 2 ] || printf '%s\n' "$2" | sed 's/^/    /'; }
@@ -291,12 +292,17 @@ rm -f "$HOME/.claude/settings.json"
 run claude --show
 lacks "no warning without settings env" "$OUT" "warning:"
 
-# Review Focus 3: a 0.x config exits 2 with the migration pointer.
+# Review Focus 3: a legacy config exits 2 with the migration pointer.
 old=$(mktemp)
 printf '{"active":{"gateway":"openrouter"},"gateway":{},"harness":{}}' > "$old"
 OUT=$(HARN_CONFIG="$old" "$HARN" claude --show 2>&1); RC=$?
-code "0.x config is a config error" "$RC" 2
-has "0.x config names the migration" "$OUT" "uses the 0.x schema"
+code "legacy config is a config error" "$RC" 2
+has "legacy config names the migration" "$OUT" "uses the legacy schema"
+
+# A slot must name one provider (the object form is built only after a no on verify-first item 1).
+OUT=$(HARN_CONFIG=$(cfgwith '.slots.gw = {"*": "openrouter"}') "$HARN" claude gw --show 2>&1); RC=$?
+code "object slot is a config error" "$RC" 2
+has "object slot names the field" "$OUT" "slots.gw must be a provider name"
 
 # Reserved provider names.
 OUT=$(HARN_CONFIG=$(cfgwith '.providers.gw = .providers.openrouter') "$HARN" claude --show 2>&1); RC=$?
@@ -365,7 +371,7 @@ harn_load_config() {
   HARN_CFG=$(cat "$src") || harn_die 2 "cannot read $src"
   jq -e . >/dev/null 2>&1 <<<"$HARN_CFG" || harn_die 2 "$src is not valid JSON"
   if jq -e '(has("gateway") or has("active")) and (has("providers") | not)' >/dev/null <<<"$HARN_CFG"; then
-    harn_die 2 "$src uses the 0.x schema" "see the 1.0.0 migration in CHANGELOG.md, or back it up and run: harn config init --force"
+    harn_die 2 "$src uses the legacy schema" "see the 0.1.0 migration in CHANGELOG.md, or back it up and run: harn config init --force"
   fi
   bad=$(jq -r '.providers // {} | keys[] | select(. == "gw" or . == "local" or . == "account")' <<<"$HARN_CFG" | head -n 1)
   [ -z "$bad" ] || harn_die 2 "provider name '$bad' is reserved" "rename providers.$bad in $src"
@@ -412,9 +418,10 @@ harn_resolve_source() {
   case $A_SOURCE in
     ''|account) ;;
     gw|local)
-      S_PROVIDER=$(cfg --arg s "$A_SOURCE" --arg h "$A_HARNESS" \
-        '.slots[$s] // empty | if type == "object" then (.[$h] // .["*"] // empty) else . end')
-      [ -n "$S_PROVIDER" ] || harn_die 2 "slot '$A_SOURCE' has no provider for $A_HARNESS" "set slots.$A_SOURCE in $HARN_CONFIG_PATH"
+      [ "$(cfg --arg s "$A_SOURCE" '.slots[$s] | type')" != object ] \
+        || harn_die 2 "slots.$A_SOURCE must be a provider name" "set slots.$A_SOURCE in $HARN_CONFIG_PATH"
+      S_PROVIDER=$(cfg --arg s "$A_SOURCE" '.slots[$s] // empty')
+      [ -n "$S_PROVIDER" ] || harn_die 2 "slot '$A_SOURCE' has no provider" "set slots.$A_SOURCE in $HARN_CONFIG_PATH"
       ;;
     *) S_PROVIDER=$A_SOURCE ;;
   esac
@@ -693,9 +700,6 @@ has "hyphenated provider maps to an identifier" "$OUT" "export OLLAMA_CLOUD_API_
 
 OUT=$(HARN_CONFIG="$kc" "$HARN" pi gw m --show 2>&1)
 has "pi argv" "$OUT" "exec pi --provider openrouter --model m"
-hn=$(cfgwith '.providers.openrouter.key_command = ["true"] | del(.providers.openrouter.login) | .providers.openrouter.harness_names = {"pi": "or"}')
-OUT=$(HARN_CONFIG="$hn" "$HARN" pi gw m --show 2>&1)
-has "harness_names renames the provider" "$OUT" "exec pi --provider or --model m"
 
 OUT=$(HARN_CONFIG="$kc" "$HARN" codex anthropic --show 2>&1); RC=$?
 code "missing wire block" "$RC" 2
@@ -723,13 +727,6 @@ has "swap codex: key variable" "$c" "export OLLAMA_CLOUD_API_KEY="
 has "swap codex: provider tokens" "$c" "model_provider=ollama-cloud"
 lacks "swap codex: nothing from openrouter" "$c" "openrouter"
 
-# Per-harness slot object.
-obj=$(cfgwith '.slots.gw = {"*": "openrouter", "pi": "ollama-cloud"} | .providers[] |= (if .kind == "endpoint" then (del(.login) | .key_command = ["true"]) else . end)')
-OUT=$(HARN_CONFIG="$obj" "$HARN" pi gw m --show 2>&1)
-has "slot object picks per harness" "$OUT" "# source: ollama-cloud"
-OUT=$(HARN_CONFIG="$obj" "$HARN" claude gw --show 2>&1)
-has "slot object falls back to *" "$OUT" "# source: openrouter"
-
 # Real exec against a stub: key in env, inherited vars cleared.
 stub claude 'printf "BASE=%s TOKEN=%s APIKEY=[%s] OAI=%s\n" "$ANTHROPIC_BASE_URL" "$ANTHROPIC_AUTH_TOKEN" "$ANTHROPIC_API_KEY" "${OPENAI_BASE_URL-unset}"; printf "ARGS=%s\n" "$*"'
 OUT=$(OPENAI_BASE_URL=https://stale HARN_CONFIG="$kc" PATH="$STUBS:$PATH" "$HARN" claude gw 2>&1)
@@ -752,6 +749,24 @@ has "failing key_command names the provider" "$OUT" "key_command for 'openrouter
 run claude gw
 code "login provider with no stored key" "$RC" 2
 has "points at harn login" "$OUT" "run: harn login openrouter"
+```
+
+Only if Task 1 recorded `PI_HERMES_BASE_URL=no`, append the `harness_names` test:
+
+```bash
+hn=$(cfgwith '.providers.openrouter.key_command = ["true"] | del(.providers.openrouter.login) | .providers.openrouter.harness_names = {"pi": "or"}')
+OUT=$(HARN_CONFIG="$hn" "$HARN" pi gw m --show 2>&1)
+has "harness_names renames the provider" "$OUT" "exec pi --provider or --model m"
+```
+
+Only if Task 1 recorded `LAUNCH_PI_HERMES=no`, append the slot object tests:
+
+```bash
+obj=$(cfgwith '.slots.gw = {"*": "openrouter", "pi": "ollama-cloud"} | .providers[] |= (if .kind == "endpoint" then (del(.login) | .key_command = ["true"]) else . end)')
+OUT=$(HARN_CONFIG="$obj" "$HARN" pi gw m --show 2>&1)
+has "slot object picks per harness" "$OUT" "# source: ollama-cloud"
+OUT=$(HARN_CONFIG="$obj" "$HARN" claude gw --show 2>&1)
+has "slot object falls back to *" "$OUT" "# source: openrouter"
 ```
 
 - [ ] **Step 2: Run to see them fail**
@@ -790,7 +805,7 @@ harn_kind_endpoint() {
       ;;
     openai)
       harn_setenv "$key_env" "$C_VALUE" "$C_SHOWN"
-      name=$(cfg --arg p "$S_PROVIDER" --arg h "$A_HARNESS" '.providers[$p].harness_names[$h] // $p')
+      name=$S_PROVIDER
       wire_api=$(harn_pfield '.openai_wire.wire_api // "responses"')
       X_ARGV=("$bin")
       while IFS= read -r tok; do
@@ -806,6 +821,12 @@ harn_kind_endpoint() {
   esac
   X_ARGV+=(${A_PASS[@]+"${A_PASS[@]}"})
 }
+```
+
+Only if Task 1 recorded `PI_HERMES_BASE_URL=no`, resolve the name through `harness_names` instead:
+
+```bash
+      name=$(cfg --arg p "$S_PROVIDER" --arg h "$A_HARNESS" '.providers[$p].harness_names[$h] // $p')
 ```
 
 Add a credentials section after the environment section:
@@ -955,9 +976,9 @@ git commit -m "feat: add the launcher kind for local models"
 
 ---
 
-### Task 5: Key store, paste login, `harn key` and `harn logout`
+### Task 5: Key file, paste login and `harn key`
 
-Ends with `harn login ollama-cloud` storing a pasted key, `harn claude ollama-cloud` using it, `harn key` printing it and `harn logout` removing it.
+Ends with `harn login ollama-cloud` storing a pasted key, `harn claude ollama-cloud` using it and `harn key` printing it.
 
 **Files:**
 - Modify: `bin/harn`
@@ -966,16 +987,15 @@ Ends with `harn login ollama-cloud` storing a pasted key, `harn claude ollama-cl
 **Interfaces:**
 - Consumes: `harn_key_value`, `harn_load_config`, `cfg`.
 - Produces:
-  - `HARN_KEY_BACKENDS`: the ordered backend list, default `keychain libsecret file`; tests set `file`. Documented in `AGENTS.md` as the test seam.
-  - `harn_store_write PROVIDER` (key on stdin; prints the backend used), `harn_store_read PROVIDER` (replaces Task 3's), `harn_store_delete PROVIDER`.
-  - `harn_cmd_login PROVIDER [ARGS...]`, `harn_login_paste PROVIDER`, `harn_cmd_key PROVIDER`, `harn_cmd_logout PROVIDER`.
+  - `harn_store_write PROVIDER` (key on stdin; prints the file written), `harn_store_read PROVIDER` (replaces Task 3's).
+  - `harn_cmd_login PROVIDER [ARGS...]`, `harn_login_paste PROVIDER`, `harn_cmd_key PROVIDER`.
 
 - [ ] **Step 1: Write the failing store tests**
 
 `tests/t_store.sh`:
 
 ```bash
-# File key store, paste login, harn key, harn logout.
+# File key store, paste login, harn key.
 
 printf 'sk-oc-pasted \n' | "$HARN" login ollama-cloud >/dev/null 2>&1
 code "paste login exits 0" "$?" 0
@@ -1002,12 +1022,13 @@ kc=$(cfgwith '.providers.openrouter |= (del(.login) | .key_command = ["printf", 
 OUT=$(HARN_CONFIG="$kc" "$HARN" key openrouter 2>&1)
 has "harn key runs key_command" "$OUT" "from-cmd"
 
-run logout ollama-cloud
-code "logout exits 0" "$RC" 0
-[ -e "$f" ] && bad "logout removes the file" || ok "logout removes the file"
+printf 'sk-oc-second' | "$HARN" login ollama-cloud >/dev/null 2>&1
 run key ollama-cloud
-code "key after logout" "$RC" 2
-has "key after logout points at login" "$OUT" "run: harn login ollama-cloud"
+has "a second login overwrites the key" "$OUT" "sk-oc-second"
+rm -f "$f"
+run key ollama-cloud
+code "key after the file is deleted" "$RC" 2
+has "missing key points at login" "$OUT" "run: harn login ollama-cloud"
 
 printf '\n' | "$HARN" login ollama-cloud >/dev/null 2>&1
 code "empty paste is refused" "$?" 2
@@ -1023,97 +1044,28 @@ Expected: `FAIL: key file written` (the `login` subcommand does not exist yet).
 
 - [ ] **Step 3: Implement the store and subcommands**
 
-Add a key store section after the credentials section. Include the `keychain` lines only if Task 1 recorded `KEYCHAIN_STDIN=yes`; otherwise drop them and set the default list to `libsecret file`.
+Add a key store section after the credentials section:
 
 ```bash
 # --- key store
 
-HARN_KEY_BACKENDS=${HARN_KEY_BACKENDS:-keychain libsecret file}
-
-harn_store_dir() { printf '%s/harn/keys' "${XDG_STATE_HOME:-$HOME/.local/state}"; }
-
-harn_backend_present() {
-  case $1 in
-    keychain) command -v security >/dev/null 2>&1 ;;
-    libsecret) command -v secret-tool >/dev/null 2>&1 ;;
-    file) true ;;
-    *) harn_die 2 "unknown key backend '$1'" "HARN_KEY_BACKENDS takes: keychain libsecret file" ;;
-  esac
-}
-
-harn_backend_write() {
-  local b=$1 p=$2 key
-  key=$(cat; printf x)
-  key=${key%x}
-  case $b in
-    keychain)
-      case $key in *'"'*|*$'\n'*) return 1 ;; esac
-      printf 'add-generic-password -U -s harn -a %s -w "%s"\n' "$p" "$key" | security -i >/dev/null 2>&1
-      ;;
-    libsecret) printf '%s' "$key" | secret-tool store --label="harn $p" service harn provider "$p" 2>/dev/null ;;
-    file) (umask 077 && mkdir -p "$(harn_store_dir)" && printf '%s' "$key" > "$(harn_store_dir)/$p") ;;
-  esac
-}
-
-harn_backend_read() {
-  case $1 in
-    keychain) security find-generic-password -s harn -a "$2" -w 2>/dev/null ;;
-    libsecret) secret-tool lookup service harn provider "$2" 2>/dev/null ;;
-    file) [ -r "$(harn_store_dir)/$2" ] && cat "$(harn_store_dir)/$2" ;;
-  esac
-}
-
-harn_backend_delete() {
-  case $1 in
-    keychain) security delete-generic-password -s harn -a "$2" >/dev/null 2>&1 ;;
-    libsecret) secret-tool clear service harn provider "$2" >/dev/null 2>&1 ;;
-    file) rm -f "$(harn_store_dir)/$2" ;;
-  esac
-  return 0
-}
-
-harn_backend_probe() {
-  local b=$1 v="harn-probe-$$"
-  harn_backend_present "$b" || return 1
-  printf '%s' "$v" | harn_backend_write "$b" harn-probe || return 1
-  if [ "$(harn_backend_read "$b" harn-probe)" = "$v" ]; then
-    harn_backend_delete "$b" harn-probe
-    return 0
-  fi
-  harn_backend_delete "$b" harn-probe
-  return 1
-}
+harn_store_file() { printf '%s/harn/keys/%s' "${XDG_STATE_HOME:-$HOME/.local/state}" "$1"; }
 
 harn_store_write() {
-  local p=$1 b key
+  local f key
+  f=$(harn_store_file "$1")
   key=$(cat; printf x)
   key=${key%x}
-  for b in $HARN_KEY_BACKENDS; do
-    harn_backend_probe "$b" || continue
-    if printf '%s' "$key" | harn_backend_write "$b" "$p"; then
-      printf '%s\n' "$b"
-      return 0
-    fi
-  done
-  harn_die 3 "no key backend accepted the key for '$p'" "backends tried: $HARN_KEY_BACKENDS"
+  (umask 077 && mkdir -p "$(dirname "$f")" && printf '%s' "$key" > "$f") \
+    || harn_die 3 "cannot write $f"
+  printf '%s\n' "$f"
 }
 
 harn_store_read() {
-  local p=$1 b v
-  for b in $HARN_KEY_BACKENDS; do
-    harn_backend_present "$b" || continue
-    v=$(harn_backend_read "$b" "$p") || continue
-    [ -z "$v" ] || { printf '%s' "$v"; return 0; }
-  done
-  harn_die 2 "no stored key for '$p'" "run: harn login $p"
-}
-
-harn_store_delete() {
-  local b
-  for b in $HARN_KEY_BACKENDS; do
-    harn_backend_present "$b" && harn_backend_delete "$b" "$1"
-  done
-  return 0
+  local f
+  f=$(harn_store_file "$1")
+  [ -r "$f" ] || harn_die 2 "no stored key for '$1'" "run: harn login $1"
+  cat "$f"
 }
 ```
 
@@ -1133,7 +1085,7 @@ harn_provider_exists() {
 
 harn_cmd_login() {
   local p=${1:-} login
-  [ -n "$p" ] || harn_die 2 "usage: harn login <provider> [--workspace <id>] [--no-open]"
+  [ -n "$p" ] || harn_die 2 "usage: harn login <provider> [--no-open]"
   shift
   harn_provider_exists "$p"
   login=$(cfg --arg p "$p" '.providers[$p].login // empty')
@@ -1162,12 +1114,7 @@ harn_cmd_key() {
   printf '\n'
 }
 
-harn_cmd_logout() {
-  [ -n "${1:-}" ] || harn_die 2 "usage: harn logout <provider>"
-  harn_provider_exists "$1"
-  harn_store_delete "$1"
-  printf 'harn: removed any stored key for %s\n' "$1" >&2
-}
+
 ```
 
 In `harn_main`, after the `--version` case and before `harn_load_config`, route the subcommands:
@@ -1176,7 +1123,6 @@ In `harn_main`, after the `--version` case and before `harn_load_config`, route 
   case ${1:-} in
     login) shift; harn_load_config; harn_cmd_login "$@"; exit $? ;;
     key) shift; harn_load_config; harn_cmd_key "$@"; exit $? ;;
-    logout) shift; harn_load_config; harn_cmd_logout "$@"; exit $? ;;
   esac
 ```
 
@@ -1187,20 +1133,11 @@ Stub for Task 6, so the dispatch compiles: add `harn_login_pkce() { harn_die 3 "
 Run: `/bin/bash tests/run.sh | tail -n 1`
 Expected: `N passed, 0 failed`.
 
-- [ ] **Step 5: Check the real backends by hand**
-
-On macOS, with the keychain backend enabled:
-
-```bash
-HARN_KEY_BACKENDS=keychain bash -c 'printf "sk-manual-1\n" | bin/harn login ollama-cloud; bin/harn key ollama-cloud; bin/harn logout ollama-cloud; bin/harn key ollama-cloud; echo "exit $?"'
-```
-Expected: `stored the key for ollama-cloud in keychain`, then `sk-manual-1`, then the removal line, then `no stored key` and `exit 2`. While the first command runs, `ps -axo args | grep -c sk-manual-1` from a second terminal prints `1` (only the grep itself). On Linux with a secret service, repeat with `HARN_KEY_BACKENDS=libsecret`.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add bin/harn tests/t_store.sh
-git commit -m "feat: add the key store, paste login, harn key and harn logout"
+git commit -m "feat: add the key file, paste login and harn key"
 ```
 
 ---
@@ -1212,11 +1149,10 @@ Ends with `harn login openrouter` obtaining a key through OpenRouter's headless 
 **Files:**
 - Modify: `bin/harn`
 - Create: `tests/t_pkce.sh`
-- Modify: `.agents/specs/2026-09-28-providers-and-release-design.md` ("Verify first" item 4)
 
 **Interfaces:**
 - Consumes: `harn_store_write`, `harn_require`, `harn_die`.
-- Produces: `harn_b64url` (stdin to stdout), `harn_pkce_verifier`, `harn_pkce_challenge VERIFIER`, `harn_login_pkce PROVIDER [--workspace ID] [--no-open]`.
+- Produces: `harn_b64url` (stdin to stdout), `harn_pkce_verifier`, `harn_pkce_challenge VERIFIER`, `harn_login_pkce PROVIDER [--no-open]`.
 
 - [ ] **Step 1: Write the failing PKCE tests**
 
@@ -1234,11 +1170,11 @@ rec=$(mktemp -d)
 stub curl "printf '%s\n' \"\$@\" > '$rec/argv'; cat > '$rec/stdin'; printf '{\"key\":\"sk-or-from-pkce\"}'"
 stub open "echo opened >> '$rec/opened'; exit 1"
 stub xdg-open "echo opened >> '$rec/opened'; exit 1"
-OUT=$(printf 'the-code-123\n' | PATH="$STUBS:$PATH" "$HARN" login openrouter --workspace ws-uuid-1 --no-open 2>&1); RC=$?
+OUT=$(printf 'the-code-123\n' | PATH="$STUBS:$PATH" "$HARN" login openrouter --no-open 2>&1); RC=$?
 code "pkce login exits 0" "$RC" 0
 has "prints the auth URL" "$OUT" "https://openrouter.ai/auth?code_challenge="
 has "URL uses S256" "$OUT" "code_challenge_method=S256"
-has "URL locks the workspace" "$OUT" "required_workspace_id=ws-uuid-1"
+has "URL labels the key" "$OUT" "key_label=harn-"
 has "posts to the keys endpoint" "$(cat "$rec/argv")" "https://openrouter.ai/api/v1/auth/keys"
 has "uses POST" "$(cat "$rec/argv")" "POST"
 has "body carries the code" "$(cat "$rec/stdin")" '"code":"the-code-123"'
@@ -1255,7 +1191,7 @@ stub curl "cat > /dev/null; printf '{\"error\":{\"message\":\"invalid code\"}}'"
 OUT=$(printf 'bad\n' | PATH="$STUBS:$PATH" "$HARN" login openrouter --no-open 2>&1); RC=$?
 code "response without key" "$RC" 2
 has "shows the API error" "$OUT" "invalid code"
-"$HARN" logout openrouter >/dev/null 2>&1
+rm -f "$XDG_STATE_HOME/harn/keys/openrouter"
 ```
 
 `HARN_PKCE_SELFTEST` and `--pkce-selftest` are a test seam: with the variable set, `harn --pkce-selftest` prints the challenge of that verifier plus one freshly generated verifier, and touches nothing else.
@@ -1275,20 +1211,18 @@ harn_pkce_verifier() { openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n'; }
 harn_pkce_challenge() { printf '%s' "$1" | openssl dgst -sha256 -binary | harn_b64url; }
 
 harn_login_pkce() {
-  local p=$1 ws='' open=1 verifier challenge url code body resp key b
+  local p=$1 open=1 verifier challenge url code body resp key b
   shift
   while [ $# -gt 0 ]; do
     case $1 in
-      --workspace) [ $# -ge 2 ] || harn_die 2 "--workspace needs an id"; ws=$2; shift 2 ;;
       --no-open) open=0; shift ;;
-      *) harn_die 2 "unknown flag: $1" "usage: harn login $p [--workspace <id>] [--no-open]" ;;
+      *) harn_die 2 "unknown flag: $1" "usage: harn login $p [--no-open]" ;;
     esac
   done
   harn_require curl openssl
   verifier=$(harn_pkce_verifier)
   challenge=$(harn_pkce_challenge "$verifier")
   url="https://openrouter.ai/auth?code_challenge=$challenge&code_challenge_method=S256&key_label=harn-$(hostname -s)"
-  [ -z "$ws" ] || url="$url&required_workspace_id=$ws"
   printf 'Open this URL, approve, then paste the code it shows:\n  %s\n' "$url" >&2
   if [ "$open" = 1 ]; then
     if command -v open >/dev/null 2>&1; then
@@ -1327,21 +1261,21 @@ In `harn_main`, next to `--version`, add the self-test seam:
 Run: `/bin/bash tests/run.sh | tail -n 1`
 Expected: `N passed, 0 failed`.
 
-- [ ] **Step 5: Real login, done by the R&D lead (verify-first item 4)**
+- [ ] **Step 5: Real login, done by the R&D lead**
 
 Stop and ask the R&D lead to run, in their own terminal:
 
 ```bash
-bin/harn login openrouter --workspace <Default Workspace id>
+bin/harn login openrouter
 bin/harn claude gw --show
 ```
-Then confirm in the OpenRouter dashboard, or with the management API's `GET /api/v1/keys?workspace_id=<id>`, that a key labelled `harn-<hostname>` exists in that workspace. Record the answer in the spec's "Verify first" item 4. If the key landed elsewhere, remove `--workspace` from the code, tests and spec as item 4 says.
+Then confirm in the OpenRouter dashboard that a key labelled `harn-<hostname>` exists, and note which workspace it landed in. Afterwards delete `~/.local/state/harn/keys/openrouter` and revoke the test key on `https://openrouter.ai/settings/keys`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add bin/harn tests/t_pkce.sh .agents/specs/2026-09-28-providers-and-release-design.md
-git commit -m "feat: add OpenRouter PKCE login locked to a workspace"
+git add bin/harn tests/t_pkce.sh
+git commit -m "feat: add OpenRouter PKCE login"
 ```
 
 ---
@@ -1418,8 +1352,7 @@ Sources:
   <provider>            a named provider, for a one-off
 
 Commands:
-  harn login <provider> [--workspace <id>] [--no-open]
-  harn logout <provider>
+  harn login <provider> [--no-open]
   harn key <provider>          print the provider's key, for reuse by another command
   harn config                  print the resolved config
   harn config init [--force]   write the template config
@@ -1467,7 +1400,7 @@ In `harn_main`, extend the first `case` so it reads:
 Replace `lib/harn.zsh` entirely with:
 
 ```zsh
-# harn 1.x is an executable (bin/harn). This file remains only so an old shell startup line keeps working.
+# harn is now an executable (bin/harn). This file remains only so an old shell startup line keeps working.
 print -u2 "harn: remove the 'source .../lib/harn.zsh' line from your shell startup file and put bin/harn on your PATH (see README)"
 ```
 
@@ -1478,7 +1411,7 @@ Expected: `N passed, 0 failed`.
 
 - [ ] **Step 5: Migrate the R&D lead's own install**
 
-Stop and ask before touching `~/.zshrc` or `~/.config/harn/config.json`. With a yes: back up the config to `~/.config/harn/config.0x.json`, write the 1.0 config by the spec's Migration mapping (the `openrouter` provider keeps its `key_command` built from the old `key_ref`), replace the `source` line with a symlink `~/.local/bin/harn -> ~/Developer/personal/harn/bin/harn`, then run `harn claude gw --show` and `harn codex --show` and compare with the 0.x output.
+Stop and ask before touching `~/.zshrc` or `~/.config/harn/config.json`. With a yes: back up the config to `~/.config/harn/config.0x.json`, write the 0.1 config by the spec's Migration mapping (the `openrouter` provider keeps its `key_command` built from the old `key_ref`), replace the `source` line with a symlink `~/.local/bin/harn -> ~/Developer/personal/harn/bin/harn`, then run `harn claude gw --show` and `harn codex --show` and compare with the legacy output.
 
 - [ ] **Step 6: Commit**
 
@@ -1508,7 +1441,7 @@ Append to `tests/t_config.sh`:
 
 ```bash
 # Docs name every command the help text names, and nothing that no longer exists.
-for w in "harn login" "harn logout" "harn key" "harn config init" "--show" "brew install dean-harel/tap/harn"; do
+for w in "harn login" "harn key" "harn config init" "--show" "brew tap dean-harel/harn https://github.com/dean-harel/harn" "brew install dean-harel/harn/harn"; do
   grep -qF -- "$w" "$ROOT/README.md" && ok "README mentions $w" || bad "README mentions $w"
 done
 for w in "lib/harn.zsh is sourced" "key_ref" "active.gateway" " -l "; do
@@ -1528,12 +1461,12 @@ Sections, in order, with this content:
 
 1. `# harn` and one sentence: "One command for any AI coding harness (Claude Code, Codex, Pi, Hermes Agent), against your subscription, a gateway API or a local model."
 2. **Where it fits:** "For OpenRouter alone, OpenRouter's own Ori Harness is the vendor-supported launcher. harn is for switching between your subscription, one or more gateways and local models with one command, and it keeps your keys out of dotfiles."
-3. **Install:** `brew install dean-harel/tap/harn`, or `git clone --branch vX.Y.Z git@github.com:dean-harel/harn.git ~/src/harn && ln -s ~/src/harn/bin/harn ~/.local/bin/harn`. Requirements: `jq`, `curl`, `openssl`.
+3. **Install:** `brew tap dean-harel/harn https://github.com/dean-harel/harn && brew install dean-harel/harn/harn`, or `git clone --branch vX.Y.Z git@github.com:dean-harel/harn.git ~/src/harn && ln -s ~/src/harn/bin/harn ~/.local/bin/harn`. Requirements: `jq`, `curl`, `openssl`.
 4. **Use:** the Interface block from the spec, verbatim, plus three worked examples: first run (`harn config init`, `harn login openrouter`, `harn claude gw`), swapping the gw slot to `ollama-cloud`, and a local model (`ollama pull qwen3-coder`, `harn claude local qwen3-coder`).
-5. **Config:** the template, then one paragraph each on slots, providers and kinds, credentials (`login`, `key_command` with the `op read` and `printenv` examples, and a native OpenRouter entry for users who prefer a key they manage), and `harness_names`.
-6. **Where keys live:** the three backends, their order, and `harn key` / `harn logout`.
+5. **Config:** the template, then one paragraph each on slots, providers and kinds, and credentials (`login`, `key_command` with the `op read` and `printenv` examples, and a native OpenRouter entry for users who prefer a key they manage). Add a paragraph on `harness_names` or the slot object form only if Task 1 built them.
+6. **Where keys live:** one 0600 file per provider under `${XDG_STATE_HOME:-~/.local/state}/harn/keys/`; `harn key` prints one. Removing a key means deleting its file and revoking it on the provider's keys page (`https://openrouter.ai/settings/keys` for OpenRouter); deleting the file alone leaves the key valid.
 7. **Limits:** pi and hermes swap only among providers their registry knows (per Task 1's answer); local models need Ollama installed and the model pulled.
-8. **Upgrading from 0.x:** the spec's Migration bullets.
+8. **Upgrading from the zsh function:** the spec's Migration bullets.
 9. **Develop:** `/bin/bash tests/run.sh`; `--show` for any command.
 
 - [ ] **Step 3: Rewrite AGENTS.md**
@@ -1550,7 +1483,7 @@ gateway API or a local model. bash 3.2 plus `jq`, `curl` and `openssl`.
     bin/harn <harness> ... --show
 
 The suite runs bin/harn as a child process against a temporary HOME, never launches a real
-harness and never reaches the network. HARN_KEY_BACKENDS=file keeps it out of the keychain, and
+harness and never reaches the network. Keys land in the temporary HOME's state directory, and
 HARN_PKCE_SELFTEST with --pkce-selftest exposes the PKCE math.
 
 ## Invariants
@@ -1568,7 +1501,8 @@ HARN_PKCE_SELFTEST with --pkce-selftest exposes the PKCE math.
 
 bin/harn is sectioned in order: messages, paths, config, parsing, sources, kinds, environment,
 credentials, key store, logins, run, subcommands, main. lib/config.template.json is the shipped
-config. lib/harn.zsh is a stub for 0.x startup files. Specs and plans are in .agents/.
+config. lib/harn.zsh is a stub for startup files from the zsh-function era. Formula/harn.rb makes
+the repository its own Homebrew tap. Specs and plans are in .agents/.
 
 ## Conventions
 
@@ -1653,35 +1587,37 @@ Expected: `N passed, 0 failed`.
 
 ```bash
 git add README.md AGENTS.md CONTRIBUTING.md SECURITY.md .github/ISSUE_TEMPLATE tests/t_config.sh
-git commit -m "docs: rewrite the README and agent guide for 1.0; add contributing and security policies"
+git commit -m "docs: rewrite the README and agent guide; add contributing and security policies"
 ```
 
 ---
 
-### Task 9: Release pipeline and Homebrew tap
+### Task 9: Release pipeline and Homebrew formula
 
-Ends with a merged release PR producing tag `v1.0.0`, a release carrying `harn-1.0.0.tar.gz` and `SHA256SUMS`, and `brew install dean-harel/tap/harn` installing it.
+Ends with a merged release PR producing tag `v0.1.0`, and `brew install dean-harel/harn/harn` installing that tag from the repository's own tap.
 
 **Files:**
-- Create: `release-please-config.json`, `.release-please-manifest.json`, `.github/workflows/release.yml`
-- Create in the new repository `dean-harel/homebrew-tap`: `Formula/harn.rb`, `README.md`
+- Create: `release-please-config.json`, `.release-please-manifest.json`, `.github/workflows/release.yml`, `Formula/harn.rb`
 
 **Interfaces:**
-- Consumes: `HARN_VERSION` line in `bin/harn` (Task 2).
-- Produces: release assets named `harn-<version>.tar.gz` and `SHA256SUMS`; the formula's `url` and `sha256`.
+- Consumes: the `HARN_VERSION` line in `bin/harn` (Task 2).
+- Produces: the formula's `tag:` line, which release-please rewrites in each release PR alongside `HARN_VERSION`.
 
 - [ ] **Step 1: Write a failing release-config check**
 
 Append to `tests/t_config.sh`:
 
 ```bash
-jq -e '.packages["."]["release-type"] == "simple" and (.packages["."]["extra-files"] | index("bin/harn"))' \
+jq -e '.packages["."] | .["release-type"] == "simple" and .["bump-minor-pre-major"] == true
+  and (.["extra-files"] | index("bin/harn") and index("Formula/harn.rb"))' \
   "$ROOT/release-please-config.json" >/dev/null 2>&1 && ok "release-please config" || bad "release-please config"
-grep -q 'x-release-please-version' "$ROOT/bin/harn" && ok "version marker present" || bad "version marker present"
+grep -q 'x-release-please-version' "$ROOT/bin/harn" && ok "version marker in bin/harn" || bad "version marker in bin/harn"
+grep -q 'tag: "v[0-9.]*" # x-release-please-version' "$ROOT/Formula/harn.rb" 2>/dev/null \
+  && ok "version marker in the formula" || bad "version marker in the formula"
 ```
 
 Run: `/bin/bash tests/run.sh | grep '^FAIL'`
-Expected: `FAIL: release-please config`.
+Expected: `FAIL: release-please config` and `FAIL: version marker in the formula`.
 
 - [ ] **Step 2: Add the release-please files**
 
@@ -1695,7 +1631,8 @@ Expected: `FAIL: release-please config`.
       "release-type": "simple",
       "package-name": "harn",
       "include-component-in-tag": false,
-      "extra-files": ["bin/harn"]
+      "bump-minor-pre-major": true,
+      "extra-files": ["bin/harn", "Formula/harn.rb"]
     }
   }
 }
@@ -1707,9 +1644,42 @@ Expected: `FAIL: release-please config`.
 { ".": "0.0.0" }
 ```
 
-The first release is forced to 1.0.0 with a `Release-As: 1.0.0` footer on the commit in Step 5.
+From `0.0.0`, the branch's `feat!` commit gives `0.1.0`, since `bump-minor-pre-major` turns a breaking change on 0.x into a minor bump.
 
-- [ ] **Step 3: Add the release workflow**
+- [ ] **Step 3: Add the formula**
+
+`Formula/harn.rb`:
+
+```ruby
+class Harn < Formula
+  desc "One command for any AI coding harness: subscription, gateway or local model"
+  homepage "https://github.com/dean-harel/harn"
+  url "https://github.com/dean-harel/harn.git",
+      tag: "v0.1.0" # x-release-please-version
+  license "MIT"
+  head "https://github.com/dean-harel/harn.git", branch: "main"
+
+  depends_on "jq"
+  uses_from_macos "curl"
+
+  def install
+    libexec.install "bin", "lib"
+    bin.install_symlink libexec/"bin/harn"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/harn --version")
+    assert_match "usage: harn", shell_output("#{bin}/harn --help")
+  end
+end
+```
+
+Installing from the git tag means a release uploads nothing and needs no token or second repository. Until the `v0.1.0` tag exists, `brew install` fails on the missing tag, which is the intended guard.
+
+Run: `ruby -c Formula/harn.rb && /bin/bash tests/run.sh | tail -n 1`
+Expected: `Syntax OK`, then `N passed, 0 failed`.
+
+- [ ] **Step 4: Add the release workflow**
 
 `.github/workflows/release.yml`:
 
@@ -1734,96 +1704,31 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - id: rp
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-      - if: steps.rp.outputs.release_created == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ steps.rp.outputs.tag_name }}
-          persist-credentials: false
-
-      - if: steps.rp.outputs.release_created == 'true'
-        name: Upload the source tarball and checksums
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.rp.outputs.tag_name }}
-          VERSION: ${{ steps.rp.outputs.version }}
-        run: |
-          set -euo pipefail
-          git archive --format=tar.gz --prefix="harn-$VERSION/" -o "harn-$VERSION.tar.gz" HEAD
-          sha256sum "harn-$VERSION.tar.gz" > SHA256SUMS
-          gh release upload "$TAG" "harn-$VERSION.tar.gz" SHA256SUMS --repo "$GITHUB_REPOSITORY"
-
-      - if: steps.rp.outputs.release_created == 'true'
-        name: Update the Homebrew formula
-        env:
-          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          TAG: ${{ steps.rp.outputs.tag_name }}
-          VERSION: ${{ steps.rp.outputs.version }}
-        run: |
-          set -euo pipefail
-          sha=$(cut -d' ' -f1 SHA256SUMS)
-          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/dean-harel/homebrew-tap.git" tap
-          cd tap
-          sed -i -E "s|^  url \".*\"|  url \"https://github.com/dean-harel/harn/releases/download/${TAG}/harn-${VERSION}.tar.gz\"|; s|^  sha256 \".*\"|  sha256 \"${sha}\"|" Formula/harn.rb
-          git -c user.name="harn release" -c user.email="noreply@github.com" commit -am "harn ${VERSION}"
-          git push origin HEAD
 ```
 
-The release job alone holds `contents: write` and `pull-requests: write`. The tap push uses `HOMEBREW_TAP_TOKEN`, a fine-grained token limited to `dean-harel/homebrew-tap` with `contents: write` and an expiry.
-
-- [ ] **Step 4: Prepare the tap formula locally**
-
-Write, in a scratch directory for the new repository, `Formula/harn.rb`:
-
-```ruby
-class Harn < Formula
-  desc "One command for any AI coding harness: subscription, gateway or local model"
-  homepage "https://github.com/dean-harel/harn"
-  url "https://github.com/dean-harel/harn/releases/download/v1.0.0/harn-1.0.0.tar.gz"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
-  license "MIT"
-
-  depends_on "jq"
-  uses_from_macos "curl"
-
-  def install
-    libexec.install "bin", "lib"
-    bin.install_symlink libexec/"bin/harn"
-  end
-
-  test do
-    assert_match version.to_s, shell_output("#{bin}/harn --version")
-    assert_match "usage: harn", shell_output("#{bin}/harn --help")
-  end
-end
-```
-
-and `README.md`: `brew install dean-harel/tap/harn`. The zero `sha256` is overwritten by the first release run; `brew install` before that release fails on the checksum, which is the intended guard.
+The release job alone holds `contents: write` and `pull-requests: write`.
 
 - [ ] **Step 5: Commit, then stop for the outward steps**
 
 ```bash
 /bin/bash tests/run.sh | tail -n 1
-git add release-please-config.json .release-please-manifest.json .github/workflows/release.yml tests/t_config.sh
-git commit -m "ci: release with release-please and update the Homebrew tap" -m "Release-As: 1.0.0"
+git add release-please-config.json .release-please-manifest.json .github/workflows/release.yml Formula/harn.rb tests/t_config.sh
+git commit -m "ci: release with release-please; make the repository its own Homebrew tap"
 ```
 Expected: `N passed, 0 failed`, then the commit.
 
 Stop and ask the R&D lead, one act at a time:
-1. Create the public repository `dean-harel/homebrew-tap` and push the scratch formula to it.
-2. Create the fine-grained token and add it to `dean-harel/harn` as the secret `HOMEBREW_TAP_TOKEN`.
-3. Push `feat/providers-1.0` and open the PR; CI must pass on both platforms and `shellcheck`.
-4. Merge the PR, then merge the release PR release-please opens.
+1. Push `feat/providers` and open the PR; CI must pass on both platforms and `shellcheck`.
+2. Merge the PR, then check that the release PR release-please opens says `0.1.0` and rewrites both marked lines, and merge it.
 
 - [ ] **Step 6: Verify the release**
 
 ```bash
-gh release view v1.0.0 -R dean-harel/harn --json assets --jq '.assets[].name'
-brew install dean-harel/tap/harn && harn --version && brew test harn
+gh release view v0.1.0 -R dean-harel/harn --json tagName --jq .tagName
+brew tap dean-harel/harn https://github.com/dean-harel/harn && brew install dean-harel/harn/harn && harn --version && brew test dean-harel/harn/harn
 ```
-Expected: `harn-1.0.0.tar.gz` and `SHA256SUMS`; then `harn 1.0.0`; then the formula test passes.
+Expected: `v0.1.0`; then `harn 0.1.0`; then the formula test passes.

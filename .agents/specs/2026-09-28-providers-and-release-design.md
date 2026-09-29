@@ -6,7 +6,8 @@ Status: in review (design phase)
 
 Make harn a tool a team can adopt: one command for any harness against a subscription, a
 gateway API or a local model, with credentials handled, released and installable on macOS and
-Linux. This is release 1.0.0 and breaks the current config schema.
+Linux. This is release 0.1.0 and breaks the current config schema. It stays on 0.x until the
+first cohort's use has shaped the schema, since a 0.x minor release can still break it cheaply.
 
 ## Value
 
@@ -32,8 +33,7 @@ harn <harness> <provider> [<model>]   # a named provider, for one-offs
 harn <harness> ... --show             # print the environment and exec line, run nothing
 harn <harness> ... -- <args>          # pass the rest to the harness unchanged
 
-harn login <provider> [--workspace <id>] [--no-open]
-harn logout <provider>
+harn login <provider> [--no-open]
 harn key <provider>                   # print the provider's key, for reuse by another command
 harn config [init [--force] | edit]
 harn --version
@@ -101,18 +101,13 @@ One file, `$HARN_CONFIG` or `${XDG_CONFIG_HOME:-~/.config}/harn/config.json`.
 ```
 
 - **Slots** are the user's categories and the swap point. Re-pointing `gw` from `openrouter`
-  to `ollama-cloud` changes no command. A slot's value is a provider name, or an object mapping
-  harness names to providers with `"*"` as the fallback (`{"*": "ollama", "pi": "ollama-api"}`),
-  for a harness the usual provider cannot serve.
+  to `ollama-cloud` changes no command. A slot's value is a provider name.
 - **`label`** (`api`, `local`) is descriptive: `--show` prints it so a user sees whether a run
   leaves the machine. The subscription case has no entry and prints `subscription`.
 - **`harness.<h>.account: true`** marks a harness with its own login. Endpoint support follows
   from the wire; a launcher reports an unsupported harness itself.
 - **Wire blocks** (`anthropic_wire`, `openai_wire`) each carry `base_url` and an optional
   `key_env`. `openai_wire` also carries `wire_api` (default `responses`).
-- **`providers.<p>.harness_names.<h>`** (optional) is the name harness `h` knows provider `p` by,
-  substituted for `{provider}` in `gw_argv`; it defaults to the provider's key. It exists for
-  harnesses with a built-in provider registry (pi, hermes).
 - `gw_argv` keeps its current contract with `{gw}` renamed `{provider}`; the other placeholders
   are `{model}`, `{base_url}`, `{key_env}` and `{wire_api}`.
 - Every command-shaped field (`launcher`, `key_command`) is an argv array, so a path with a space
@@ -145,9 +140,9 @@ always appended unchanged.
     (`ollama-cloud` gives `OLLAMA_CLOUD_API_KEY`), then exec `<binary> <gw_argv...> <args>`.
   - A provider without the wire block the harness needs (`harn codex anthropic`, where
     `anthropic` has no `openai_wire`) exits 2 naming `providers.<p>.openai_wire.base_url`.
-  - A harness whose `gw_argv` has no `{base_url}` (pi, hermes) reaches only providers its own
-    registry knows by `harness_names`. harn cannot verify that registry, so it passes the name
-    through and the harness reports an unknown one.
+  - A harness whose `gw_argv` has no `{base_url}` (pi, hermes) receives the provider's name and
+    resolves it in its own registry. harn cannot verify that registry, so the harness reports an
+    unknown name itself.
 - **launcher**. Exec `<launcher...> <harness> [--model <model>] [-- <args>]`. The launcher owns
   model download, context size and any harness profile it writes. Ollama is the only one.
 
@@ -158,15 +153,14 @@ runtime state harn should not own.
 
 An endpoint declares exactly one of:
 
-- **`login: "openrouter-pkce"`**. `harn login openrouter [--workspace <id>]` runs OpenRouter's
+- **`login: "openrouter-pkce"`**. `harn login openrouter` runs OpenRouter's
   headless PKCE flow:
   1. Verifier: `openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n'`, 64 base64url characters
      (RFC 7636 allows 43 to 128).
   2. Challenge: `printf %s "$verifier" | openssl dgst -sha256 -binary | openssl base64 -A | tr
      '+/' '-_' | tr -d '='`.
   3. URL: `https://openrouter.ai/auth?code_challenge=<challenge>&code_challenge_method=S256&
-     key_label=harn-<hostname>`, plus `&required_workspace_id=<id>` when `--workspace` is given.
-     harn prints it and opens it with `open` or `xdg-open` when present, unless `--no-open` is
+     key_label=harn-<hostname>`. harn prints it and opens it with `open` or `xdg-open` when present, unless `--no-open` is
      given.
   4. The user pastes the code the page displays. It is single-use and expires in 10 minutes.
   5. Exchange: `curl -sS --fail-with-body -X POST https://openrouter.ai/api/v1/auth/keys -H
@@ -174,30 +168,23 @@ An endpoint declares exactly one of:
      `{"code": ..., "code_verifier": ..., "code_challenge_method": "S256"}` built by `jq` and
      written to curl's stdin, so neither value reaches argv. The key is the response's `key`
      field; a missing or empty `key` exits 2 with the response's error message.
-  `--workspace` locks the key into that workspace server-side.
+  The key lands in the workspace OpenRouter assigns the account, which for a member of one
+  workspace is that workspace.
 - **`login: "paste"`**. `harn login <provider>` reads the key once from a hidden prompt
   (`read -rs`).
 - **`key_command`**. Any argv whose stdout is the key (`["op","read","op://..."]`,
   `["printenv","OLLAMA_API_KEY"]`). No login step.
 
-**Key store.** Each key is one item named service `harn`, account `<provider>`: a generic
-password in the keychain, a libsecret item with attributes `service=harn` and
-`provider=<provider>`, or the file below. `harn login` probes the backends in this order and
-writes to the first that passes; probes run only at login:
-
-1. **macOS keychain**, through `security`. Its probe is a write, read and delete of a throwaway
-   item, with the write made without the value on argv. If verify-first item 3 finds no such
-   write, this backend is left out of 1.0 and macOS uses the file.
-2. **libsecret**, through `secret-tool`, which reads the secret from stdin. Its probe is the
-   same round trip, which fails when no secret service is running.
-3. **A file** at `${XDG_STATE_HOME:-~/.local/state}/harn/keys/<provider>`, created under `umask
-   077`. Always available.
-
-A read, from `harn key` or from an endpoint run, searches the backends in the same order without
-probing and takes the first item found, so a key stays reachable when a backend's availability
-changes. No item found exits 2 naming `harn login <provider>`. `harn logout` deletes the item
-from every backend. For a `key_command` provider, `harn key` runs the command and prints its
+**Key store.** Each key is one file at `${XDG_STATE_HOME:-~/.local/state}/harn/keys/<provider>`,
+created under `umask 077` and holding the key byte for byte. This is the model pi uses for its
+own keys (`~/.pi/agent/auth.json`, mode 0600). A missing file exits 2 naming
+`harn login <provider>`. For a `key_command` provider, `harn key` runs the command and prints its
 output.
+
+**Removing a key** is two acts, both documented in the README with no command of their own:
+delete the key file, and revoke the key at the provider. Deleting the file alone leaves the key
+valid, and harn cannot revoke an OpenRouter key: every key-deletion endpoint requires a
+management key. Logging in again overwrites the file.
 
 **Where a key may go.** A key reaches a harness only through its environment: never argv, never
 written outside the store, and never printed, with one exception: `harn key`, which exists to
@@ -225,17 +212,18 @@ conventions as `UNIPaaS/gates` records them, so the repo can be adopted by the t
   `shellcheck`; a Conventional Commits PR-title check. Actions pinned by commit hash with a
   version comment, `permissions: {}` by default, `persist-credentials: false`.
 - **Releases.** release-please on `main`, one immutable semver tag stream, a `simple` release
-  type. Merging the release PR is the human step that publishes. The version lives in one line
-  of `bin/harn`, `HARN_VERSION="x.y.z" # x-release-please-version`, which release-please
-  rewrites through `extra-files`; `harn --version` prints it. The release job alone is granted
-  `contents: write` and `pull-requests: write` at job level; every other job keeps
-  `permissions: {}`. The release uploads its source
-  tarball and `SHA256SUMS`, then updates the formula in `dean-harel/homebrew-tap` from the same
-  workflow, since a release created by `GITHUB_TOKEN` triggers no other workflow. The tap write
-  uses a fine-grained token scoped to that repository with `contents: write` and an expiry,
-  stored as `HOMEBREW_TAP_TOKEN`.
-- **Install.** `brew install dean-harel/tap/harn` on macOS and Linux, or clone a tag and symlink
-  `bin/harn` onto the `PATH`.
+  type with `bump-minor-pre-major`, so a breaking change on 0.x raises the minor version. Merging
+  the release PR is the human step that publishes. The version lives on one marked line in each
+  of two files, both rewritten by release-please through `extra-files` in the release PR itself:
+  `HARN_VERSION="x.y.z" # x-release-please-version` in `bin/harn`, which `harn --version` prints,
+  and the formula's `tag: "vx.y.z" # x-release-please-version`. The formula installs from the git
+  tag, so a release needs no uploaded asset, no second repository and no token. The release job
+  alone is granted `contents: write` and `pull-requests: write` at job level; every other job
+  keeps `permissions: {}`.
+- **Install.** The harn repository is its own Homebrew tap, with the formula at
+  `Formula/harn.rb`: `brew tap dean-harel/harn https://github.com/dean-harel/harn` then
+  `brew install dean-harel/harn/harn`, on macOS and Linux. Or clone a tag and symlink `bin/harn`
+  onto the `PATH`.
 - **Exit codes.** 2 for a usage or config error, 3 for an internal error, otherwise the
   harness's own. Every error names the field or command to fix.
 
@@ -260,7 +248,7 @@ Nothing in the suite launches a harness or reaches the network.
   and `S256`, that neither appears in argv, and that the returned `key` is stored. A response
   without `key` exits 2. The test passes `--no-open`, and a stub `open` and `xdg-open` on `PATH`
   fail the test if called.
-- The file key store: mode `0600`, round trip, logout removes it.
+- The key store: mode `0600` and a byte-exact round trip.
 - Slot swap: re-pointing `gw` from `openrouter` to `ollama-cloud`, compared by `--show` line:
   - claude: `ANTHROPIC_BASE_URL`, the redaction text and the default `--model` change; the key
     variable (`ANTHROPIC_AUTH_TOKEN`), the binary and the passthrough stay.
@@ -271,9 +259,8 @@ Nothing in the suite launches a harness or reaches the network.
 - Missing models: an endpoint without `default_model` exits 2 naming the field; a launcher
   without a model execs with no `--model`.
 - Bare `harn pi` exits 2 with the no-subscription message.
-- By hand, on each platform before a release, for the keychain and libsecret backends: `harn
-  login` with a paste stores a key, `harn key` prints the same value, `harn logout` then makes
-  `harn key` exit 2, and no key appears in `ps` output during the login.
+- By hand, once before the first release: a real `harn login openrouter` stores a key that
+  `harn claude gw` then uses.
 
 ## Deferred
 
@@ -284,29 +271,33 @@ Each waits for a concrete need.
 - Layered config (machine, project, home) and a team policy layer.
 - Launch-time model validation against a provider's catalog.
 - A retention notice for providers that do not enforce zero data retention.
+- Keychain and libsecret key backends, once someone needs a key store other than a 0600 file.
+- 1.0.0, once the first cohort's use has settled the schema.
+- `harn logout`, and `--workspace` through OpenRouter's `required_workspace_id`, once someone
+  needs revocation from harn or belongs to more than one workspace.
 
 ## Verify first
 
 Unknowns that could change the design, in the order implementation should settle them. Each
 names what happens if the answer is no.
 
+Two config features exist only for a no answer, and are built only then.
+
 1. Whether `ollama launch` supports `pi` and `hermes`. If not, the template adds an
    `ollama-api` endpoint (`anthropic_wire.base_url` `http://localhost:11434`,
    `openai_wire.base_url` `http://localhost:11434/v1`, `key_command: ["printf", "ollama"]`,
-   `default_model` `qwen3-coder`) and sets `slots.local` to `{"*": "ollama", "pi": "ollama-api", "hermes":
-   "ollama-api"}`.
+   `default_model` `qwen3-coder`), and a slot's value may also be an object mapping harness names
+   to providers with `"*"` as the fallback, so `slots.local` becomes `{"*": "ollama", "pi":
+   "ollama-api", "hermes": "ollama-api"}`.
 2. Whether pi and hermes can be pointed at a base URL from argv. If yes, their `gw_argv` gains
    `{base_url}` and swaps work for any provider. If not, they reach only providers their
-   registry knows, through `harness_names`, and the README says so.
-3. A way to write a keychain item without the secret on argv (`security -i` reading its command
-   from stdin is the candidate). If none, macOS uses the file backend in 1.0.
-4. That OpenRouter's headless flow with `required_workspace_id` returns a key bound to that
-   workspace, checked with one real login. If not, `--workspace` is removed and the README tells
-   members which workspace to pick.
+   registry knows, the README says so, and providers gain an optional
+   `providers.<p>.harness_names.<h>`: the name harness `h` knows provider `p` by, substituted for
+   `{provider}` in `gw_argv` and defaulting to the provider's key.
 
 ## Migration
 
-1.0.0 drops `active`, `gateway`, `local`, `secrets`, `key_ref`, `supports`, `harness.<h>.default`
+0.1.0 drops `active`, `gateway`, `local`, `secrets`, `key_ref`, `supports`, `harness.<h>.default`
 and `gateway.<n>.key_env`. The changelog maps each:
 
 - `active.gateway` becomes `slots.gw`, and `active.local` becomes `slots.local`.
@@ -322,6 +313,6 @@ and `gateway.<n>.key_env`. The changelog maps each:
 - `harness.<h>.default` goes: no source always means the subscription, and a user who defaulted
   to `gw` or `local` types the slot.
 - The install changes: remove the `source .../lib/harn.zsh` line from the shell startup file
-  and install `bin/harn` as above. For the 1.x releases, `lib/harn.zsh` stays as a stub that
+  and install `bin/harn` as above. Through the 0.x releases, `lib/harn.zsh` stays as a stub that
   defines nothing and prints that instruction to stderr, so an old startup file keeps working
   and says what to change.
