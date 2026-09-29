@@ -8,6 +8,7 @@ class Harn < Formula
 
   depends_on "jq"
   uses_from_macos "curl"
+  uses_from_macos "openssl@3"
 
   def install
     libexec.install "bin", "lib"

@@ -30,7 +30,7 @@ ln -s ~/src/harn/bin/harn ~/.local/bin/harn
 ```
 
 Requirements: `jq`, `curl` and `openssl`. macOS ships all three; on a minimal Linux image install
-`jq` and `curl` with the package manager. harn names a missing one on first use.
+`jq`, `curl` and `openssl` with the package manager. harn names a missing one on first use.
 
 ## Use
 

@@ -47,3 +47,5 @@ jq -e '.packages["."] | .["release-type"] == "simple" and .["bump-minor-pre-majo
 grep -q 'x-release-please-version' "$ROOT/bin/harn" && ok "version marker in bin/harn" || bad "version marker in bin/harn"
 grep -q 'tag: "v[0-9.]*" # x-release-please-version' "$ROOT/Formula/harn.rb" 2>/dev/null \
   && ok "version marker in the formula" || bad "version marker in the formula"
+grep -q 'uses_from_macos "openssl@3"' "$ROOT/Formula/harn.rb" && ok "formula declares openssl" || bad "formula declares openssl"
+grep -q '`jq`, `curl` and `openssl` with the package manager' "$ROOT/README.md" && ok "README names openssl for minimal Linux" || bad "README names openssl for minimal Linux"
