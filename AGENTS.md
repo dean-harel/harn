@@ -1,47 +1,35 @@
 # harn
 
-Unified launcher for AI coding harnesses (Claude Code, Codex, Pi, and more).
-A single sourced zsh function that, given a harness and a mode, resolves config
-and execs the right binary with the right environment. macOS + zsh only;
-requires `jq`.
+A single executable, `bin/harn`, that runs an AI coding harness against a subscription, a
+gateway API or a local model. bash 3.2 plus `jq`, `curl` and `openssl`.
 
-## Run
+## Run and test
 
-    harn claude               # default mode (from config)
-    harn claude gw model      # route through a gateway
-    harn claude local qwen    # local model
-    harn codex gw openai/gpt-4o
-    harn <h> -- <args>        # everything after -- is passed through
-    harn <h> --show           # print the would-be exec line, run nothing
-    harn config init|edit     # manage ~/.config/harn/config.json
+    /bin/bash tests/run.sh      # the whole suite; must pass on macOS /bin/bash and on Linux
+    bin/harn <harness> ... --show
 
-The tool is a shell function sourced from `lib/harn.zsh`. After editing that
-file, re-source it or open a new terminal.
+The suite runs bin/harn as a child process against a temporary HOME, never launches a real
+harness and never reaches the network. Keys land in the temporary HOME's state directory, and
+HARN_PKCE_SELFTEST with --pkce-selftest exposes the PKCE math.
 
-## Test
+## Invariants
 
-    zsh tests/dry-run.sh
+- **bash 3.2.** No mapfile, no associative arrays, empty arrays as ${a[@]+"${a[@]}"} under set -u.
+  CI runs the suite under macOS /bin/bash to catch a violation.
+- **A key never reaches argv or output.** It travels through the harness's environment only;
+  --show prints a redaction and never resolves a credential. harn key is the one command that
+  prints a key. A test pins each of these.
+- **Every run clears before it sets.** harn_clean_vars lists everything a run unsets; a new
+  provider variable belongs there.
+- **Command-shaped config is an argv array.**
 
-The dry-run suite points `HARN_CONFIG` at `lib/config.template.json`, so it
-never depends on the user's live config. Use `--show` on any command to verify
-the exec line without launching anything. Keep tests passing before commit.
+## Layout
 
-## Architecture
-
-All logic lives in `lib/harn.zsh`. Helper functions named `_harn_*` read the
-JSON config through `jq` (`_harn_read_config`, `_harn_harness_default`,
-`_harn_harness_supports`, `_harn_harness_wire`); `_harn_parse` and
-`_harn_resolve_mode` turn argv into the `_A_*` state the launcher execs from.
-Config is `~/.config/harn/config.json` (or `$XDG_CONFIG_HOME/harn`), overridable
-with `$HARN_CONFIG`; the shipped template is `lib/config.template.json`.
-
-Modes: `account` execs the harness against its own login and unsets wire env
-vars that could redirect the session; `gw` resolves a key and injects env per
-the harness wire protocol; `local` dispatches to a configured launcher. Adding
-a harness is a config entry, not new code, unless it needs a new wire protocol.
+bin/harn is sectioned in order: messages, paths, config, parsing, sources, kinds, environment,
+credentials, key store, logins, run, subcommands, main. lib/config.template.json is the shipped
+config. MIGRATION.md maps the legacy config. lib/harn.zsh is a stub for startup files from the zsh-function era. Formula/harn.rb makes
+the repository its own Homebrew tap. Specs and plans are in .agents/.
 
 ## Conventions
 
-Personal repo: author is `dean-harel <anichego@gmail.com>`, SSH remote, and no
-`Co-Authored-By` or attribution trailers in commits. Secrets live in 1Password
-and are referenced by config; never hardcode them.
+Conventional Commits; release-please cuts releases from main. No attribution lines anywhere.

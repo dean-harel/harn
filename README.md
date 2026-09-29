@@ -1,196 +1,143 @@
 # harn
 
-Unified launcher for AI coding harnesses (Claude Code, Codex, Pi, Hermes Agent, ...).
+One command for any AI coding harness (Claude Code, Codex, Pi, Hermes Agent), against your
+subscription, a gateway API or a local model.
 
-> Personal utility, shared in case it's useful. macOS + zsh only. No support promised.
+## Where it fits
 
-```bash
-harn claude              # account mode (default)
-harn claude gw model     # via gateway
-harn claude local qwen   # local model
-harn codex gw openai/gpt-4o
-harn hermes gw openai/gpt-4o
-```
+For OpenRouter alone, OpenRouter's own Ori Harness is the vendor-supported launcher. harn is for
+switching between your subscription, one or more gateways and local models with one command, and
+it keeps your keys out of dotfiles.
+
+Every run starts from a clean environment: harn unsets every provider variable it knows before
+setting the ones the chosen source needs, so a gateway session never leaks into a subscription
+one.
 
 ## Install
 
+With Homebrew, on macOS or Linux:
+
 ```bash
-git clone git@github.com:dean-harel/harn.git /path/to/harn
-echo 'source /path/to/harn/lib/harn.zsh' >> ~/.zshrc
+brew tap dean-harel/harn https://github.com/dean-harel/harn
+brew install dean-harel/harn/harn
 ```
 
-Requires `jq`. The script is sourced into your shell; after editing it, re-source or open a new terminal. `--show` on any command prints the would-be exec line without running it. `zsh tests/dry-run.sh` runs the dry-run test suite.
+Or from a release tag:
 
-## Modes
+```bash
+git clone --branch vX.Y.Z git@github.com:dean-harel/harn.git ~/src/harn
+ln -s ~/src/harn/bin/harn ~/.local/bin/harn
+```
 
-- **`account`** — exec the harness against its own subscription/auth (e.g. `claude` ChatGPT-style login or `codex` ChatGPT auth). Wire-specific env vars that could redirect the session (`ANTHROPIC_*` for anthropic, `OPENAI_API_KEY`/`OPENAI_BASE_URL` for openai) are unset before exec.
-- **`gw`** — route through a configured gateway: resolve a key, inject env vars per the harness's wire protocol, exec.
-- **`local`** — dispatch to a configured launcher (e.g. `ollama launch`) for a local model.
+Requirements: `jq`, `curl` and `openssl`. macOS ships all three; on a minimal Linux image install
+`jq` and `curl` with the package manager. harn names a missing one on first use.
 
-Default mode per harness is set in the config; `harn <h>` with no mode picks it up.
+## Use
+
+```
+harn <harness>                        # subscription: the harness's own login
+harn <harness> gw [<model>]           # whatever the gw slot points at
+harn <harness> local [<model>]        # whatever the local slot points at
+harn <harness> <provider> [<model>]   # a named provider, for one-offs
+harn <harness> ... --show             # print the environment and exec line, run nothing
+harn <harness> ... -- <args>          # pass the rest to the harness unchanged
+
+harn login <provider> [--no-open]
+harn key <provider>                   # print the provider's key, for reuse by another command
+harn config [init [--force] | edit]
+harn --version
+```
+
+A missing model falls back to the provider's `default_model`, and a local launcher with no model
+shows its own picker.
+
+**First run through OpenRouter:**
+
+```bash
+harn config init
+harn login openrouter      # opens OpenRouter in the browser; paste the code it shows
+harn claude gw
+```
+
+**Swapping gateways.** Point the `gw` slot at another provider and every command keeps working:
+
+```json
+"slots": { "gw": "ollama-cloud", "local": "ollama" }
+```
+
+```bash
+harn login ollama-cloud    # paste the key from ollama.com; input is hidden
+harn claude gw
+```
+
+**A local model** through Ollama, which must be installed:
+
+```bash
+ollama pull qwen3-coder
+harn claude local qwen3-coder
+```
+
+`--show` on any command prints what would run, with every key redacted, so it is safe to paste
+into an issue.
 
 ## Config
 
-```bash
-harn config init    # create ~/.config/harn/config.json from template
-harn config edit    # open in $EDITOR
-harn config         # print resolved config
-```
+One file, `$HARN_CONFIG` or `${XDG_CONFIG_HOME:-~/.config}/harn/config.json`. `harn config init`
+writes the shipped template, [`lib/config.template.json`](lib/config.template.json), and
+`harn config` prints the resolved file.
 
-Path: `~/.config/harn/config.json` (or `$XDG_CONFIG_HOME/harn/config.json`). Override with `HARN_CONFIG=/path/to/config.json`.
+**Slots** are the swap point. `gw` and `local` each name one provider; changing a slot changes no
+command. The names `gw`, `local` and `account` are reserved.
 
-### Schema
+**Providers** come in two kinds. An `endpoint` is a base URL per wire (`anthropic_wire` for
+Claude Code, `openai_wire` for Codex, Pi and Hermes) plus a credential and a `default_model`. A
+`launcher` hands the harness to a tool that manages its own runtime, such as `ollama launch`,
+which pulls the model, sets the context size and writes any harness profile it needs.
 
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "active": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "gateway": { "type": "string" },
-        "local":   { "type": "string" }
-      }
-    },
-    "secrets": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "required": ["command"],
-        "properties": {
-          "command": {
-            "type": "string",
-            "description": "Receives the full key_ref as $1; stdout is the secret."
-          }
-        }
-      }
-    },
-    "gateway": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "required": ["key_ref"],
-        "properties": {
-          "key_ref": {
-            "type": "string",
-            "description": "<scheme>://<rest>; scheme selects a secrets entry."
-          },
-          "anthropic_wire": {
-            "type": "object",
-            "required": ["base_url"],
-            "properties": {
-              "base_url": { "type": "string", "format": "uri" }
-            }
-          },
-          "openai_wire": {
-            "type": "object",
-            "required": ["base_url"],
-            "properties": {
-              "base_url": { "type": "string", "format": "uri" },
-              "wire_api": { "type": "string", "description": "Default: \"chat\"." }
-            }
-          },
-          "key_env": {
-            "type": "string",
-            "description": "openai-wire: env var name. Default: <UPPER(name)>_API_KEY."
-          }
-        }
-      }
-    },
-    "local": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "required": ["launcher"],
-        "properties": {
-          "launcher": {
-            "type": "string",
-            "description": "Command prefix; harn appends <harness> --model <model> [-- ...]."
-          }
-        }
-      }
-    },
-    "harness": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "required": ["wire", "binary", "supports"],
-        "properties": {
-          "wire":     { "enum": ["anthropic", "openai"] },
-          "binary":   { "type": "string" },
-          "supports": {
-            "type": "array",
-            "uniqueItems": true,
-            "items": { "enum": ["account", "gw", "local"] }
-          },
-          "default":  { "enum": ["account", "gw", "local", null] },
-          "gw_argv": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "openai-wire only: argv template for gw mode. Placeholders: {gw}, {model}, {base_url}, {key_env}, {wire_api}. Defaults to [\"--provider\", \"{gw}\", \"--model\", \"{model}\"]."
-          }
-        }
-      }
-    }
-  }
-}
-```
+**Credentials.** An endpoint sets exactly one of:
 
-Adding a harness, gateway, launcher, or secrets provider is a config edit only — no code changes. See `lib/config.template.json` for a working example.
+- `"login": "openrouter-pkce"`: `harn login openrouter` runs OpenRouter's browser login and
+  stores the key it returns. No key ever passes through your clipboard.
+- `"login": "paste"`: `harn login <provider>` reads the key once from a hidden prompt.
+- `"key_command"`: any command whose output is the key, written as a list of words, for example
+  `["op", "read", "op://Private/OpenRouter/credential"]` for 1Password or
+  `["printenv", "OLLAMA_API_KEY"]` for a variable you manage yourself. A native OpenRouter
+  entry with a key you created in its dashboard works the same way.
 
-## Gateway mode
+**`harness_names`.** Pi and Hermes resolve a provider in their own registry. When a harness knows
+a provider under another name, map it: a provider you called `or` reaches Pi with
+`"harness_names": {"pi": "openrouter"}`.
 
-When you run `harn <harness> gw <model>`:
+## Where keys live
 
-1. Look up `gateway.<active.gateway>` → get `key_ref` and the wire-specific config.
-2. Resolve `key_ref` via the secrets mechanism (below) → get the key.
-3. Inject env vars based on the harness's `wire`:
-   - **`anthropic`**: set `ANTHROPIC_BASE_URL` (from `gateway.<name>.anthropic_wire.base_url`) and `ANTHROPIC_AUTH_TOKEN` (key). Clear `ANTHROPIC_API_KEY` to force the gateway path.
-   - **`openai`**: set `<KEY_ENV>=<key>` where `KEY_ENV` defaults to `<UPPER(gateway)>_API_KEY` or comes from `gateway.<name>.key_env`. Never put the key on argv (visible in `ps`).
-4. Exec the harness binary. For openai-wire harnesses, argv is templated by `harness.<name>.gw_argv` with substitutions for `{gw}`, `{model}`, `{base_url}` (from `gateway.<name>.openai_wire.base_url`), `{key_env}`, and `{wire_api}` (from `openai_wire.wire_api`, default `"chat"`). Pi's template uses only `{gw}` and `{model}` because pi has a built-in provider registry; codex's template uses the full set so harn can inject the whole provider definition via `-c` overrides without needing `~/.codex/config.toml`. Hermes has a built-in registry too, so its template is the pi shape prefixed with the `chat` subcommand. Default template if unset is the pi shape.
+A key from `harn login` is one file per provider under
+`${XDG_STATE_HOME:-~/.local/state}/harn/keys/`, readable only by you (mode 0600). `harn key
+<provider>` prints it, so another tool can take it as its own `key_command`:
+`["harn", "key", "openrouter"]`.
 
-Env vars die with the spawned process. Keys are never persisted to disk.
+A key reaches a harness only through its environment, never its command line. To remove one,
+delete its file and revoke the key on the provider's keys page
+(`https://openrouter.ai/settings/keys` for OpenRouter); deleting the file alone leaves the key
+valid. Logging in again overwrites the file.
 
-### Key resolution
+## Limits
 
-`key_ref` has the form `<scheme>://<rest>`. The wrapper splits on `://`, looks up `secrets.<scheme>.command`, and runs `<command> <full-key_ref>` — stdout is the secret.
+- Pi and Hermes take no base URL on the command line, so through `gw` they reach only providers
+  their own registry knows. Claude Code and Codex reach any provider.
+- Local models need Ollama installed; `ollama launch` pulls the model on first use.
 
-So with the default config:
+## Upgrading from the zsh function
 
-| `key_ref`                       | `secrets.<scheme>.command` | Final command                          |
-| ---                             | ---                        | ---                                    |
-| `op://Vault/Item/credential`    | `op read`                  | `op read op://Vault/Item/credential`   |
-| `env://OPENROUTER_API_KEY`      | (you supply a shim)        | `<your-shim> env://OPENROUTER_API_KEY` |
-| `vault://path/to/secret`        | (you supply a wrapper)     | `<your-wrapper> vault://path/...`      |
+Remove the `source .../lib/harn.zsh` line from your shell startup file and install `bin/harn` as
+above. The old config schema is refused with a pointer to [MIGRATION.md](MIGRATION.md), which
+maps every field.
 
-The wrapper has no built-in knowledge of any specific secret store, no platform-specific credential integrations, no fallback handling — providers are entirely config-driven.
-
-**Contract for a custom resolver:** receives the full `key_ref` as `$1`, prints the secret to stdout, exits 0 on success.
-
-### Default `op` provider
-
-The default config wires `op://` to bare `op read`. That means `op` itself must be authenticated when `harn` invokes it — typically via the 1Password desktop app's CLI integration (app open + unlocked, "Integrate with 1Password CLI" enabled in Settings → Developer). Verify with `op whoami`.
-
-If `op whoami` fails, `harn claude gw …` will hang waiting for `op` to prompt. That's an `op` setup issue, not a `harn` issue.
-
-## Local mode
-
-`harn <harness> local <model>` execs `<launcher> <harness> --model <model> [-- <passthrough>]`, where the launcher comes from `local.<active.local>.launcher`. Any program fitting that argv shape works.
-
-The configured launcher is responsible for any prerequisites (a running model server, tool-call translation, etc.); `harn` only formats the dispatch.
-
-Whether the resulting harness/model combination is *usable* depends on two constraints, neither of which `harn` can help with:
-
-- The model must support the harness's calling convention (typically: tool/function calling).
-- The model must respond within the harness's request deadline. Tool-heavy coding harnesses can send ~100k-token prompts per turn, so weights + KV cache must fit fully on the available accelerator memory.
-
-**Concrete example for the default config (`ollama launch`):** check `ollama show <model>` for `tools` capability, and on 32-48 GB Apple Silicon, ~20B-class models like `gpt-oss:20b` fit at full context. 30B+ models at 128k context typically spill onto CPU and time out. To raise a model's context window:
+## Develop
 
 ```bash
-echo 'FROM <base>:latest\nPARAMETER num_ctx 131072' \
-  | ollama create <base>-128k -f -
+/bin/bash tests/run.sh
+bin/harn claude gw --show
 ```
 
+The suite runs under macOS `/bin/bash` 3.2 and on Linux, never launches a harness and never
+reaches the network. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).

@@ -1,0 +1,17 @@
+name: Bug
+description: Something harn does wrong
+body:
+  - type: input
+    id: version
+    attributes: { label: harn --version }
+    validations: { required: true }
+  - type: textarea
+    id: show
+    attributes:
+      label: Output of the command with --show
+      description: --show never prints a key, so it is safe to paste.
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes: { label: What you expected instead }
+    validations: { required: true }

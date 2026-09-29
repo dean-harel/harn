@@ -293,7 +293,8 @@ Settled before any code; each answer and its consequence:
 ## Migration
 
 0.1.0 drops `active`, `gateway`, `local`, `secrets`, `key_ref`, `supports`, `harness.<h>.default`
-and `gateway.<n>.key_env`. The changelog maps each:
+and `gateway.<n>.key_env`. `MIGRATION.md` at the repository root maps each, since release-please
+owns `CHANGELOG.md`:
 
 - `active.gateway` becomes `slots.gw`, and `active.local` becomes `slots.local`.
 - `gateway.<n>` becomes a `providers.<n>` entry of kind `endpoint`, and its `key_env` moves to

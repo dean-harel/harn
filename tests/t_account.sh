@@ -66,6 +66,7 @@ printf '{"active":{"gateway":"openrouter"},"gateway":{},"harness":{}}' > "$old"
 OUT=$(HARN_CONFIG="$old" "$HARN" claude --show 2>&1); RC=$?
 code "legacy config is a config error" "$RC" 2
 has "legacy config names the migration" "$OUT" "uses the legacy schema"
+has "legacy config points at the guide" "$OUT" "MIGRATION.md"
 
 # A slot must name one provider (the object form is built only after a no on verify-first item 1).
 OUT=$(HARN_CONFIG=$(cfgwith '.slots.gw = {"*": "openrouter"}') "$HARN" claude gw --show 2>&1); RC=$?

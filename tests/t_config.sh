@@ -29,3 +29,14 @@ if command -v zsh >/dev/null 2>&1; then
   OUT=$(zsh -c "source '$ROOT/lib/harn.zsh'" 2>&1)
   has "stub tells old installs what to change" "$OUT" "put bin/harn on your PATH"
 fi
+
+# Docs name every command the help text names, and nothing that no longer exists.
+for w in "harn login" "harn key" "harn config init" "--show" "brew tap dean-harel/harn https://github.com/dean-harel/harn" "brew install dean-harel/harn/harn"; do
+  grep -qF -- "$w" "$ROOT/README.md" && ok "README mentions $w" || bad "README mentions $w"
+done
+for w in "lib/harn.zsh is sourced" "key_ref" "active.gateway" " -l "; do
+  grep -qF -- "$w" "$ROOT/README.md" && bad "README drops $w" || ok "README drops $w"
+done
+for f in MIGRATION.md CONTRIBUTING.md SECURITY.md .github/ISSUE_TEMPLATE/bug.yml .github/ISSUE_TEMPLATE/feature.yml; do
+  [ -f "$ROOT/$f" ] && ok "$f exists" || bad "$f exists"
+done
