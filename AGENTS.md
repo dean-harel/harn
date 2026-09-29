@@ -32,4 +32,6 @@ the repository its own Homebrew tap. Specs and plans are in .agents/.
 
 ## Conventions
 
-Conventional Commits; release-please cuts releases from main. No attribution lines anywhere.
+Conventional Commits; release-please cuts releases from main. Its release PR is opened by GITHUB_TOKEN,
+which starts no workflows, so that PR carries no CI; main requires no checks, so it still merges.
+Requiring checks on main first needs a GitHub App token for release-please. No attribution lines anywhere.
