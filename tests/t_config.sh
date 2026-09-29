@@ -40,3 +40,10 @@ done
 for f in MIGRATION.md CONTRIBUTING.md SECURITY.md .github/ISSUE_TEMPLATE/bug.yml .github/ISSUE_TEMPLATE/feature.yml; do
   [ -f "$ROOT/$f" ] && ok "$f exists" || bad "$f exists"
 done
+
+jq -e '.packages["."] | .["release-type"] == "simple" and .["bump-minor-pre-major"] == true
+  and (.["extra-files"] | index("bin/harn") and index("Formula/harn.rb"))' \
+  "$ROOT/release-please-config.json" >/dev/null 2>&1 && ok "release-please config" || bad "release-please config"
+grep -q 'x-release-please-version' "$ROOT/bin/harn" && ok "version marker in bin/harn" || bad "version marker in bin/harn"
+grep -q 'tag: "v[0-9.]*" # x-release-please-version' "$ROOT/Formula/harn.rb" 2>/dev/null \
+  && ok "version marker in the formula" || bad "version marker in the formula"
