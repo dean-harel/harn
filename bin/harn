@@ -346,7 +346,43 @@ harn_cmd_key() {
   printf '\n'
 }
 
-harn_login_pkce() { harn_die 3 "openrouter-pkce is not implemented yet"; }
+harn_b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+harn_pkce_verifier() { openssl rand -base64 48 | tr '+/' '-_' | tr -d '=\n'; }
+harn_pkce_challenge() { printf '%s' "$1" | openssl dgst -sha256 -binary | harn_b64url; }
+
+harn_login_pkce() {
+  local p=$1 open=1 verifier challenge url code body resp key b
+  shift
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --no-open) open=0; shift ;;
+      *) harn_die 2 "unknown flag: $1" "usage: harn login $p [--no-open]" ;;
+    esac
+  done
+  harn_require curl openssl
+  verifier=$(harn_pkce_verifier)
+  challenge=$(harn_pkce_challenge "$verifier")
+  url="https://openrouter.ai/auth?code_challenge=$challenge&code_challenge_method=S256&key_label=harn-$(hostname -s)"
+  printf 'Open this URL, approve, then paste the code it shows:\n  %s\n' "$url" >&2
+  if [ "$open" = 1 ]; then
+    if command -v open >/dev/null 2>&1; then
+      open "$url" >/dev/null 2>&1 || true
+    elif command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "$url" >/dev/null 2>&1 || true
+    fi
+  fi
+  printf 'Code: ' >&2
+  IFS= read -r code || true
+  [ -n "$code" ] || harn_die 2 "no code entered"
+  body=$(jq -cn --arg c "$code" --arg v "$verifier" '{code: $c, code_verifier: $v, code_challenge_method: "S256"}')
+  resp=$(printf '%s' "$body" | curl -sS --fail-with-body -X POST https://openrouter.ai/api/v1/auth/keys \
+    -H 'Content-Type: application/json' --data @-) || true
+  key=$(printf '%s' "$resp" | jq -r '.key // empty' 2>/dev/null)
+  [ -n "$key" ] || harn_die 2 "OpenRouter returned no key" \
+    "$(printf '%s' "$resp" | jq -r '.error.message // .error // "no error message"' 2>/dev/null || printf '%s' "$resp")"
+  b=$(printf '%s' "$key" | harn_store_write "$p") || exit $?
+  printf 'harn: stored the key for %s in %s\n' "$p" "$b" >&2
+}
 
 # --- main
 
@@ -354,6 +390,12 @@ harn_main() {
   harn_require jq
   case ${1:-} in
     --version) printf 'harn %s\n' "$HARN_VERSION"; exit 0 ;;
+    --pkce-selftest)
+      [ -n "${HARN_PKCE_SELFTEST:-}" ] || harn_die 2 "--pkce-selftest needs HARN_PKCE_SELFTEST"
+      harn_require openssl
+      printf 'challenge=%s\nverifier=%s\n' "$(harn_pkce_challenge "$HARN_PKCE_SELFTEST")" "$(harn_pkce_verifier)"
+      exit 0
+      ;;
   esac
   case ${1:-} in
     login) shift; harn_load_config; harn_cmd_login "$@"; exit $? ;;
