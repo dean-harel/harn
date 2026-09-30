@@ -6,9 +6,9 @@
 
 **Architecture:** One `package main` at the repository root, split by responsibility across `main.go`, `config.go`, `run.go`, `quote.go`, `credential.go`, `login.go`, `pkce.go` and `configcmd.go`. The existing bash suite in `tests/` runs against the built binary (`.build/harn`) and is the acceptance gate for every slice. Each slice ports one area until its test file passes, so the Go binary works end to end from the first task. The cutover task deletes the bash script once the whole suite passes on Go.
 
-**Tech Stack:** Go (Homebrew's current `go`, 1.27.x), `github.com/tailscale/hujson`, `golang.org/x/term`; bash 3.2 and `jq` for the black-box suite only; release-please; a Homebrew formula building from the git tag.
+**Tech Stack:** Go (Homebrew's current `go`, 1.27.x), `github.com/tailscale/hujson`, `golang.org/x/term`; bash 3.2 and `jq` for the black-box suite only; release-please; a Homebrew formula building from the git tag; Docker, for shellcheck and the Linux run in Task 7.
 
-**Spec:** `.agents/specs/2026-09-30-positioning-and-config-principles-design.md`, with the grammar and behaviour in `.agents/specs/2026-09-28-providers-and-release-design.md`.
+**Spec:** `.agents/specs/2026-09-30-positioning-and-config-principles-design.md`, with the grammar and behaviour in `.agents/specs/2026-09-28-providers-and-release-design.md`. Where the two differ, the positioning spec's Implementation section wins: it replaces the providers spec's bash 3.2 shape and its `jq`, `curl` and `openssl` dependencies.
 
 **Branch:** create `feat/go-port` from `docs/positioning` before Task 1.
 
@@ -61,7 +61,7 @@
 ```bash
 brew install go
 go version
-cd ~/Developer/personal/harn && git switch -c feat/go-port && go mod init github.com/dean-harel/harn
+cd ~/Developer/personal/harn && git switch -c feat/go-port docs/positioning && go mod init github.com/dean-harel/harn
 ```
 
 Expected: `go version go1.27.x darwin/arm64`, and `go: creating new go.mod: module github.com/dean-harel/harn`.
@@ -252,7 +252,7 @@ Sources:
 Commands:
   harn login <provider> [--no-open]
   harn key <provider>          print the provider's key, for reuse by another command
-  harn config                  print the resolved config
+  harn config                  print the config file
   harn config init [--force]   write the template config
   harn config edit             open the config in $EDITOR
   harn --version
@@ -1286,7 +1286,9 @@ git commit -m "feat: port the key store, paste login and harn key to Go"
   - `func pkceVerifier() (string, error)`, `func pkceChallenge(verifier string) string`
   - `func authURL(challenge, label string) string`
   - `func exchangeCode(base, code, verifier string) (string, error)`
-  - `func loginPKCE(name string, args []string)`
+  - `type cliError struct { code int; msg string; hints []string }`: a failure the caller reports through `die`
+  - `func pkceLogin(in io.Reader, out io.Writer, base, name string, open func(string)) (string, error)`: the whole flow from printed URL to stored key; returns the file written
+  - `func loginPKCE(name string, args []string)`: parses `--no-open` and runs `pkceLogin` on the terminal
 
 - [ ] **Step 1: Rewrite `tests/t_pkce.sh` for the Go binary**
 
@@ -1319,12 +1321,17 @@ has "unknown login flag is named" "$OUT" "unknown flag: --bogus"
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -1401,6 +1408,44 @@ func TestExchangeCodeReportsANonJSONBody(t *testing.T) {
 	}))
 	defer srv.Close()
 	if _, err := exchangeCode(srv.URL, "c", "v"); err == nil || err.Error() != "upstream down" {
+		t.Errorf("err %v", err)
+	}
+}
+
+func TestPKCELoginStoresTheReturnedKey(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var body map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		fmt.Fprint(w, `{"key":"sk-or-from-pkce"}`)
+	}))
+	defer srv.Close()
+	var out bytes.Buffer
+	opened := ""
+	path, err := pkceLogin(strings.NewReader("the-code-123\n"), &out, srv.URL, "openrouter", func(u string) { opened = u })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != "sk-or-from-pkce" {
+		t.Errorf("stored %q", got)
+	}
+	if body["code"] != "the-code-123" {
+		t.Errorf("code %q", body["code"])
+	}
+	if want := "code_challenge=" + pkceChallenge(body["code_verifier"]); !strings.Contains(out.String(), want) {
+		t.Errorf("the printed URL lacks the challenge for the verifier sent (%s):\n%s", want, out.String())
+	}
+	if opened == "" || !strings.Contains(out.String(), opened) {
+		t.Error("the URL opened must be the URL printed")
+	}
+}
+
+func TestPKCELoginRefusesAnEmptyCode(t *testing.T) {
+	_, err := pkceLogin(strings.NewReader("\n"), io.Discard, "http://unused.invalid", "openrouter", nil)
+	var ce *cliError
+	if !errors.As(err, &ce) || ce.code != 2 || ce.msg != "no code entered" {
 		t.Errorf("err %v", err)
 	}
 }
@@ -1499,38 +1544,56 @@ func apiError(raw []byte, e json.RawMessage) string {
 	return strings.TrimSpace(string(raw))
 }
 
+// cliError carries the exit code and hints for a failure the caller reports through die.
+type cliError struct {
+	code  int
+	msg   string
+	hints []string
+}
+
+func (e *cliError) Error() string { return e.msg }
+
 func loginPKCE(name string, args []string) {
-	open := true
+	open := openBrowser
 	for _, a := range args {
 		if a != "--no-open" {
 			die(2, "unknown flag: "+a, fmt.Sprintf("usage: harn login %s [--no-open]", name))
 		}
-		open = false
+		open = nil
 	}
+	path, err := pkceLogin(os.Stdin, os.Stderr, openRouterBase, name, open)
+	var ce *cliError
+	if errors.As(err, &ce) {
+		die(ce.code, ce.msg, ce.hints...)
+	}
+	fmt.Fprintf(os.Stderr, "harn: stored the key for %s in %s\n", name, path)
+}
+
+// pkceLogin prints the URL, reads the code from in, exchanges it at base and stores the key.
+func pkceLogin(in io.Reader, out io.Writer, base, name string, open func(string)) (string, error) {
 	verifier, err := pkceVerifier()
 	if err != nil {
-		die(3, "cannot generate a PKCE verifier", err.Error())
+		return "", &cliError{3, "cannot generate a PKCE verifier", []string{err.Error()}}
 	}
 	u := authURL(pkceChallenge(verifier), "harn-"+shortHostname())
-	fmt.Fprintf(os.Stderr, "Open this URL, approve, then paste the code it shows:\n  %s\n", u)
-	if open {
-		openBrowser(u)
+	fmt.Fprintf(out, "Open this URL, approve, then paste the code it shows:\n  %s\n", u)
+	if open != nil {
+		open(u)
 	}
-	fmt.Fprint(os.Stderr, "Code: ")
-	code, _ := readLine(os.Stdin)
-	code = strings.TrimSpace(code)
-	if code == "" {
-		die(2, "no code entered")
+	fmt.Fprint(out, "Code: ")
+	code, _ := readLine(in)
+	if code = strings.TrimSpace(code); code == "" {
+		return "", &cliError{2, "no code entered", nil}
 	}
-	key, err := exchangeCode(openRouterBase, code, verifier)
+	key, err := exchangeCode(base, code, verifier)
 	if err != nil {
-		die(2, "OpenRouter returned no key", err.Error())
+		return "", &cliError{2, "OpenRouter returned no key", []string{err.Error()}}
 	}
 	path, err := storeWrite(name, key)
 	if err != nil {
-		die(3, "cannot write "+path, err.Error())
+		return "", &cliError{3, "cannot write " + path, []string{err.Error()}}
 	}
-	fmt.Fprintf(os.Stderr, "harn: stored the key for %s in %s\n", name, path)
+	return path, nil
 }
 
 func shortHostname() string {
@@ -1935,7 +1998,7 @@ Run:
 gofmt -w . && go vet ./... && go test ./... && /bin/bash tests/run.sh
 docker run --rm -v "$PWD":/src -w /src koalaman/shellcheck:stable --shell=bash tests/*.sh && echo shellcheck-clean
 ruby -c Formula/harn.rb
-LC_ALL=C grep -nP '[^\x00-\x7F]' README.md AGENTS.md CONTRIBUTING.md || echo ascii-clean
+! LC_ALL=C grep -n '[^[:print:][:space:]]' README.md AGENTS.md CONTRIBUTING.md && echo ascii-clean
 ```
 
 Expected: `ok  	github.com/dean-harel/harn`; every suite line `PASS:`, ending `0 failed`; `shellcheck-clean`; `Syntax OK`; `ascii-clean`.
@@ -1996,7 +2059,7 @@ has "declared retention" "$OUT" "# retention: zero, by the workspace guardrail"
 # Review Focus 4: a newline in config text cannot become its own line in --show.
 nl=$(cfgwith '.providers.openrouter |= (del(.login) | .key_command = ["true"] | .retention = "zero\necho pwned" | .label = "api\necho pwned")')
 OUT=$(HARN_CONFIG="$nl" "$HARN" claude gw --show 2>&1)
-printf '%s\n' "$OUT" | grep -qx 'echo pwned' && bad "newlines stay inside comment lines" "$OUT" || ok "newlines stay inside comment lines"
+printf '%s\n' "$OUT" | grep -q '^echo pwned' && bad "newlines stay inside comment lines" "$OUT" || ok "newlines stay inside comment lines"
 ```
 
 Append to `tests/t_launcher.sh`:
@@ -2079,7 +2142,7 @@ In `execute`, replace the lines from `fmt.Printf("# source: %s (%s)\n", provider
 
 In `README.md`, add at the end of the `## Config` section, after the `harness_names` paragraph:
 
-```markdown
+````markdown
 **Accounts.** A second account, such as a personal one beside a team one, is a second config
 file. Point `HARN_CONFIG` at it, for example through an alias:
 
@@ -2094,7 +2157,7 @@ provider, give it a different name in each.
 **Retention.** An optional `retention` string on an endpoint records what you declare about the
 provider's data retention, such as `"zero, by the workspace guardrail"`. `--show` prints it, and
 harn enforces nothing from it.
-```
+````
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -2114,15 +2177,16 @@ git commit -m "feat: show the config file and the retention declaration in --sho
 ### Task 9: Login options and the OpenRouter workspace pin
 
 **Files:**
-- Modify: `config.go` (`Provider.Login` type; add `LoginSpec`, `loginOptions`, `validateLogins`; call it in `loadConfig`), `config_test.go` (append), `credential.go` (`credential`), `login.go` (`cmdLogin`), `pkce.go` (`authURL`, `loginPKCE`), `pkce_test.go` (`TestAuthURL`, append), `tests/t_endpoint.sh` (append), `tests/t_pkce.sh` (append), `README.md` (Credentials)
+- Modify: `config.go` (`Provider.Login` type; add `LoginSpec`, `loginOptions`, `validateLogins`; call it in `loadConfig`), `config_test.go` (append), `credential.go` (`credential`), `login.go` (`cmdLogin`), `pkce.go` (`authURL`, `pkceLogin`, `loginPKCE`), `pkce_test.go` (`TestAuthURL`, the `pkceLogin` calls, append), `tests/t_endpoint.sh` (append), `tests/t_pkce.sh` (append), `README.md` (Credentials)
 
 **Interfaces:**
-- Consumes: `Provider`, `loadConfig`, `sortedKeys`, `die` (Task 1); `credential` (Task 2); `cmdLogin` (Task 4); `authURL`, `loginPKCE` (Task 5).
+- Consumes: `Provider`, `loadConfig`, `sortedKeys`, `die` (Task 1); `credential` (Task 2); `cmdLogin` (Task 4); `authURL`, `pkceLogin`, `loginPKCE` (Task 5).
 - Produces:
   - `type LoginSpec struct { Method, Workspace string; Options map[string]json.RawMessage }` with `UnmarshalJSON` accepting a string or an object; `Provider.Login LoginSpec`
   - `var loginOptions = map[string][]string{"paste": nil, "openrouter-pkce": {"workspace"}}`
   - `func validateLogins(c *Config)`
-  - `func authURL(challenge, label, workspace string) string`, `func loginPKCE(name string, args []string, workspace string)`
+  - `func authURL(challenge, label, workspace string) string`
+  - `func pkceLogin(in io.Reader, out io.Writer, base, name, workspace string, open func(string)) (string, error)`, `func loginPKCE(name string, args []string, workspace string)`
 
 - [ ] **Step 1: Write the failing checks**
 
@@ -2336,7 +2400,7 @@ func authURL(challenge, label, workspace string) string {
 }
 ```
 
-and change `loginPKCE`'s signature to `func loginPKCE(name string, args []string, workspace string)` and its call to `authURL(pkceChallenge(verifier), "harn-"+shortHostname(), workspace)`.
+change `loginPKCE`'s signature to `func loginPKCE(name string, args []string, workspace string)` and its call to `pkceLogin(os.Stdin, os.Stderr, openRouterBase, name, workspace, open)`. Change `pkceLogin`'s signature to `func pkceLogin(in io.Reader, out io.Writer, base, name, workspace string, open func(string)) (string, error)` and its call to `authURL(pkceChallenge(verifier), "harn-"+shortHostname(), workspace)`. In `pkce_test.go`, add `""` as the workspace argument to both `pkceLogin` calls, before the `open` argument.
 
 In `README.md`, replace the `"login": "openrouter-pkce"` bullet under **Credentials** with:
 
@@ -2357,7 +2421,7 @@ Expected: `ok  	github.com/dean-harel/harn`, then every line `PASS:`, ending `0 
 
 ```bash
 gofmt -w . && go vet ./... && echo clean
-LC_ALL=C grep -nP '[^\x00-\x7F]' README.md || echo ascii-clean
+! LC_ALL=C grep -n '[^[:print:][:space:]]' README.md && echo ascii-clean
 git add config.go config_test.go credential.go login.go pkce.go pkce_test.go tests/t_endpoint.sh tests/t_pkce.sh README.md
 git commit -m "feat: add login options and the OpenRouter workspace pin"
 ```

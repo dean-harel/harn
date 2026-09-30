@@ -30,8 +30,8 @@ review panel. A new tool in the same family starts from them.
    shipped template or in adapters, never in core code. The one exception is a login method, which
    is a vendor's protocol by nature (`openrouter-pkce`).
 3. **An account is a file**, chosen by an environment variable (`HARN_CONFIG`, the skill's
-   `CFR_CONFIG`). A run is fully determined by its file, its environment and its flags; no command
-   stores a current account or source for later runs.
+   `CFR_CONFIG`). Which account and source a run uses is determined by its file, its environment
+   and its flags alone; no command stores a current account or source for later runs.
 4. **Named entries, a default in the file, a per-run override.** harn: `providers`, `slots`, the
    source on the command line. The skill: `gateway`, `active`, `CFR_PROFILE` and `--profile`.
 5. **The client shows what the gateway enforces, and enforces only what the gateway cannot.** The
