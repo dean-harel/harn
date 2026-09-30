@@ -33,3 +33,11 @@ func TestStoreWriteTightensAnExistingFile(t *testing.T) {
 		t.Errorf("mode %v after a second write", fi.Mode().Perm())
 	}
 }
+
+func TestStoreReadDropsTrailingNewlines(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path, _ := storeWrite("p", "sk-hand-written \n")
+	if got := storeRead("p"); got != "sk-hand-written " {
+		t.Errorf("storeRead from %s = %q", path, got)
+	}
+}

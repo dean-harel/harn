@@ -67,7 +67,7 @@ func storeRead(name string) string {
 	if err != nil {
 		die(2, fmt.Sprintf("no stored key for '%s'", name), "run: harn login "+name)
 	}
-	return string(b)
+	return strings.TrimRight(string(b), "\n")
 }
 
 // storeWrite writes the key byte for byte, mode 0600 even over an existing file.

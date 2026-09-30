@@ -67,3 +67,8 @@ func commentText(s string) string {
 		return r
 	}, s)
 }
+
+// singleQuote keeps a redaction readable while it pastes as one literal word.
+func singleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}

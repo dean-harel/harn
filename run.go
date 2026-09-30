@@ -321,7 +321,7 @@ func execute(cfg *Config, inv invocation, p *plan) {
 		for _, e := range p.env {
 			shown := shellQuote(e.value)
 			if e.redaction != "" {
-				shown = commentText(e.redaction)
+				shown = singleQuote(commentText(e.redaction))
 			}
 			fmt.Printf("export %s=%s\n", e.name, shown)
 		}

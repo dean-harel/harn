@@ -7,7 +7,7 @@ OUT=$(HARN_CONFIG="$kc" "$HARN" claude gw --show 2>&1); RC=$?
 code "claude gw --show" "$RC" 0
 has "labels the gateway" "$OUT" "# source: openrouter (api)"
 has "sets base url" "$OUT" "export ANTHROPIC_BASE_URL=https://openrouter.ai/api"
-has "redacts key_command" "$OUT" "export ANTHROPIC_AUTH_TOKEN=<redacted: key_command printf %s sk-test-1>"
+has "redacts key_command" "$OUT" "export ANTHROPIC_AUTH_TOKEN='<redacted: key_command printf %s sk-test-1>'"
 has "empties the api key" "$OUT" "export ANTHROPIC_API_KEY=''"
 has "uses the default model" "$OUT" "exec claude --model anthropic/claude-sonnet-5"
 lacks "--show never resolves the key" "$(printf '%s' "$OUT" | grep -v key_command)" "sk-test-1"
@@ -16,7 +16,7 @@ OUT=$(HARN_CONFIG="$kc" "$HARN" claude gw some/model --show -- -p hi 2>&1)
 has "explicit model and passthrough" "$OUT" "exec claude --model some/model -p hi"
 
 OUT=$(HARN_CONFIG="$kc" "$HARN" codex gw --show 2>&1)
-has "codex key variable" "$OUT" "export OPENROUTER_API_KEY=<redacted: key_command"
+has "codex key variable" "$OUT" "export OPENROUTER_API_KEY='<redacted: key_command"
 has "codex provider injection" "$OUT" "model_providers.openrouter.base_url=https://openrouter.ai/api/v1"
 has "codex env_key" "$OUT" "model_providers.openrouter.env_key=OPENROUTER_API_KEY"
 has "codex wire_api" "$OUT" "model_providers.openrouter.wire_api=responses"
@@ -140,3 +140,17 @@ um=$(cfgwith '.providers.openrouter.login = "sso"')
 OUT=$(HARN_CONFIG="$um" "$HARN" claude --show 2>&1); RC=$?
 code "unknown login method fails at load" "$RC" 2
 has "unknown login method is named" "$OUT" "unknown login 'sso'"
+
+# A redaction pastes as one literal value, whatever the config puts in it.
+sd=$(mktemp -d)
+for inj in '["sh", "-c", "x; touch INJ #"]' '["sh", "-c", "$(touch INJ)"]' '["sh", "-c", "`touch INJ`"]'; do
+  ij=$(cfgwith ".providers.openrouter |= (del(.login) | .key_command = $inj)")
+  OUT=$(HARN_CONFIG="$ij" "$HARN" claude gw --show 2>&1)
+  (cd "$sd" && printf '%s\n' "$OUT" | grep '^export' | bash >/dev/null 2>&1)
+  [ -e "$sd/INJ" ] && bad "key_command redaction pastes inert: $inj" "$OUT" || ok "key_command redaction pastes inert: $inj"
+  rm -f "$sd/INJ"
+done
+ij=$(cfgwith '.providers.openrouter.login = {"method": "openrouter-pkce", "workspace": "w; touch INJ #"}')
+OUT=$(HARN_CONFIG="$ij" "$HARN" claude gw --show 2>&1)
+(cd "$sd" && printf '%s\n' "$OUT" | grep '^export' | bash >/dev/null 2>&1)
+[ -e "$sd/INJ" ] && bad "workspace redaction pastes inert" "$OUT" || ok "workspace redaction pastes inert"
