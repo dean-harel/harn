@@ -154,3 +154,22 @@ ij=$(cfgwith '.providers.openrouter.login = {"method": "openrouter-pkce", "works
 OUT=$(HARN_CONFIG="$ij" "$HARN" claude gw --show 2>&1)
 (cd "$sd" && printf '%s\n' "$OUT" | grep '^export' | bash >/dev/null 2>&1)
 [ -e "$sd/INJ" ] && bad "workspace redaction pastes inert" "$OUT" || ok "workspace redaction pastes inert"
+
+# An empty key_command is named as such.
+ek=$(cfgwith '.providers.openrouter |= (del(.login) | .key_command = [])')
+OUT=$(HARN_CONFIG="$ek" "$HARN" claude gw --show 2>&1); RC=$?
+code "empty key_command" "$RC" 2
+has "empty key_command is named" "$OUT" "providers.openrouter.key_command is empty"
+OUT=$(HARN_CONFIG="$ek" "$HARN" key openrouter 2>&1); RC=$?
+code "harn key on an empty key_command" "$RC" 2
+has "harn key names the empty key_command" "$OUT" "providers.openrouter.key_command is empty"
+
+# A failing key_command says why.
+OUT=$(HARN_CONFIG="$nk" "$HARN" key openrouter 2>&1)
+has "failing key_command gives the reason" "$OUT" "executable file not found"
+
+# harn key refuses a provider that sets both credentials, as a run does.
+bc=$(cfgwith '.providers.openrouter.key_command = ["true"]')
+OUT=$(HARN_CONFIG="$bc" "$HARN" key openrouter 2>&1); RC=$?
+code "harn key with both credentials" "$RC" 2
+has "harn key names the conflict" "$OUT" "sets both login and key_command"

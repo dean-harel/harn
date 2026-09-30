@@ -33,6 +33,7 @@ func cmdKey(cfg *Config, args []string) {
 		die(2, "usage: harn key <provider>")
 	}
 	requireProvider(cfg, args[0])
+	checkCredential(cfg, args[0])
 	fmt.Println(keyValue(cfg, args[0]))
 }
 

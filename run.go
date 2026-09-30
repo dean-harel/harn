@@ -41,7 +41,7 @@ func run(cfg *Config, args []string) {
 	h, ok := cfg.Harness[inv.harness]
 	if !ok || h.Binary == "" {
 		die(2, fmt.Sprintf("unknown harness '%s'", inv.harness),
-			"known harnesses: "+strings.Join(sortedKeys(cfg.Harness), ", "),
+			"known harnesses: "+orNone(sortedKeys(cfg.Harness)),
 			"add one under 'harness' in "+cfg.File)
 	}
 	p := resolveSource(cfg, inv, h)
@@ -359,4 +359,11 @@ func environ(unset []string, set []envVar) []string {
 		out = append(out, e.name+"="+e.value)
 	}
 	return out
+}
+
+func orNone(names []string) string {
+	if len(names) == 0 {
+		return "(none)"
+	}
+	return strings.Join(names, ", ")
 }

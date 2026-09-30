@@ -12,15 +12,7 @@ import (
 // With show set it never resolves the key.
 func credential(cfg *Config, name string, show bool) (value, redaction string) {
 	pr := cfg.Providers[name]
-	hasLogin, hasCmd := pr.Login.Method != "", len(pr.KeyCommand) > 0
-	if hasLogin && hasCmd {
-		die(2, fmt.Sprintf("provider '%s' sets both login and key_command", name), "keep one in "+cfg.File)
-	}
-	if !hasLogin && !hasCmd {
-		die(2, fmt.Sprintf("provider '%s' has no credential", name),
-			fmt.Sprintf("set providers.%s.login or providers.%s.key_command", name, name))
-	}
-	if hasLogin {
+	if checkCredential(cfg, name) {
 		redaction = "<redacted: login " + pr.Login.Method
 		if pr.Login.Workspace != "" {
 			redaction += ", workspace " + pr.Login.Workspace
@@ -35,6 +27,23 @@ func credential(cfg *Config, name string, show bool) (value, redaction string) {
 	return keyValue(cfg, name), redaction
 }
 
+// checkCredential exits unless the provider sets exactly one usable credential; true means login.
+func checkCredential(cfg *Config, name string) bool {
+	pr := cfg.Providers[name]
+	if pr.KeyCommand != nil && len(pr.KeyCommand) == 0 {
+		die(2, fmt.Sprintf("providers.%s.key_command is empty", name), `give it a command, for example ["printenv", "MY_KEY"]`)
+	}
+	hasLogin, hasCmd := pr.Login.Method != "", len(pr.KeyCommand) > 0
+	if hasLogin && hasCmd {
+		die(2, fmt.Sprintf("provider '%s' sets both login and key_command", name), "keep one in "+cfg.File)
+	}
+	if !hasLogin && !hasCmd {
+		die(2, fmt.Sprintf("provider '%s' has no credential", name),
+			fmt.Sprintf("set providers.%s.login or providers.%s.key_command", name, name))
+	}
+	return hasLogin
+}
+
 func keyValue(cfg *Config, name string) string {
 	pr := cfg.Providers[name]
 	if len(pr.KeyCommand) == 0 {
@@ -45,7 +54,7 @@ func keyValue(cfg *Config, name string) string {
 	out, err := cmd.Output()
 	shown := "command: " + strings.Join(pr.KeyCommand, " ")
 	if err != nil {
-		die(2, fmt.Sprintf("key_command for '%s' failed", name), shown)
+		die(2, fmt.Sprintf("key_command for '%s' failed", name), shown, err.Error())
 	}
 	key := strings.TrimRight(string(out), "\n")
 	if key == "" {

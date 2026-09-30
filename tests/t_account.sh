@@ -105,3 +105,4 @@ code "first --show line names the config" "$first" "# config: $HARN_CONFIG"
 OUT=$(HARN_CONFIG="$HOME/no-such-dir/config.json" "$HARN" claude --show 2>&1)
 has "a missing file shows the built-in template" "$OUT" "# config: built-in template"
 lacks "an account run declares no retention" "$OUT" "# retention:"
+has "a config with no harnesses says so" "$(HARN_CONFIG="$em" "$HARN" claude --show 2>&1)" "known harnesses: (none)"
