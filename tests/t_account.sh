@@ -69,3 +69,31 @@ has "object slot names the field" "$OUT" "slots.gw must be a provider name"
 OUT=$(HARN_CONFIG=$(cfgwith '.providers.gw = .providers.openrouter') "$HARN" claude --show 2>&1); RC=$?
 code "reserved provider name" "$RC" 2
 has "reserved name message" "$OUT" "provider name 'gw' is reserved"
+
+# Review Focus 2: the harness's exit code is harn's own, since harn execs it.
+stub claude 'exit 7'
+OUT=$(PATH="$STUBS:$PATH" "$HARN" claude 2>&1); RC=$?
+code "harness exit code passes through" "$RC" 7
+
+# Review Focus 1: a newline, a dollar sign and a backtick survive the --show paste.
+stub claude 'for a in "$@"; do printf "[%s]\n" "$a"; done'
+run claude --show -- 'two
+lines' '$HOME' '`id`'
+line=$(printf '%s\n' "$OUT" | grep '^exec ')
+pasted=$(PATH="$STUBS:$PATH" /bin/bash -c "${line#exec }")
+has "--show line survives a paste (newline)" "$pasted" "[two
+lines]"
+has "--show line survives a paste (dollar)" "$pasted" '[$HOME]'
+has "--show line survives a paste (backtick)" "$pasted" '[`id`]'
+
+# Review Focus 5: an empty config is a clean config error.
+em=$(mktemp); printf '{}' > "$em"
+OUT=$(HARN_CONFIG="$em" "$HARN" claude --show 2>&1); RC=$?
+code "empty config is a config error" "$RC" 2
+has "empty config names the harness" "$OUT" "unknown harness 'claude'"
+
+# Review Focus 2: a harness missing from PATH is named.
+nb=$(cfgwith '.harness.claude.binary = "no-such-harness-binary"')
+OUT=$(HARN_CONFIG="$nb" "$HARN" claude 2>&1); RC=$?
+code "missing harness binary" "$RC" 2
+has "missing binary is named" "$OUT" "'no-such-harness-binary' is not on PATH"

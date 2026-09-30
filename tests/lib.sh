@@ -1,6 +1,6 @@
 # Sourced by tests/run.sh. Every test runs bin/harn as a child process against an isolated HOME.
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-HARN="$ROOT/bin/harn"
+HARN="${HARN_BIN:-$ROOT/.build/harn}"
 T_PASS=0
 T_FAIL=0
 HOME=$(mktemp -d)
