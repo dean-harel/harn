@@ -46,6 +46,9 @@ func main() {
 	case "--help", "-h", "help":
 		fmt.Print(helpText)
 		return
+	case "config":
+		cmdConfig(args[1:])
+		return
 	case "login":
 		cmdLogin(loadConfig(), args[1:])
 		return

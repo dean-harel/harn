@@ -41,3 +41,20 @@ grep -q 'tag: "v[0-9.]*" # x-release-please-version' "$ROOT/Formula/harn.rb" 2>/
   && ok "version marker in the formula" || bad "version marker in the formula"
 grep -q 'uses_from_macos "openssl@3"' "$ROOT/Formula/harn.rb" && ok "formula declares openssl" || bad "formula declares openssl"
 grep -q '`jq`, `curl` and `openssl` with the package manager' "$ROOT/README.md" && ok "README names openssl for minimal Linux" || bad "README names openssl for minimal Linux"
+
+# Review Focus 5: comments and trailing commas parse; invalid JSON is a config error naming the file.
+cm=$(mktemp)
+cat > "$cm" <<'EOF'
+{
+  // the everyday account
+  "harness": { "claude": { "wire": "anthropic", "binary": "claude", "account": true, }, },
+}
+EOF
+OUT=$(HARN_CONFIG="$cm" "$HARN" claude --show 2>&1); RC=$?
+code "config with comments and trailing commas" "$RC" 0
+OUT=$(HARN_CONFIG="$cm" "$HARN" config 2>&1)
+has "config prints the file as written" "$OUT" "// the everyday account"
+iv=$(mktemp); printf '{"slots": ' > "$iv"
+OUT=$(HARN_CONFIG="$iv" "$HARN" claude --show 2>&1); RC=$?
+code "invalid config" "$RC" 2
+has "invalid config names the file" "$OUT" "$iv is not valid config"
