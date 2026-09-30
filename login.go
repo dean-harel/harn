@@ -19,6 +19,8 @@ func cmdLogin(cfg *Config, args []string) {
 	switch m := cfg.Providers[name].Login; m {
 	case "paste":
 		loginPaste(name, args[1:])
+	case "openrouter-pkce":
+		loginPKCE(name, args[1:])
 	case "":
 		die(2, fmt.Sprintf("provider '%s' has no login", name), "it uses key_command; nothing to store")
 	default:
