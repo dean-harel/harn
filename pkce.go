@@ -34,11 +34,14 @@ func pkceChallenge(verifier string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-func authURL(challenge, label string) string {
+func authURL(challenge, label, workspace string) string {
 	q := url.Values{}
 	q.Set("code_challenge", challenge)
 	q.Set("code_challenge_method", "S256")
 	q.Set("key_label", label)
+	if workspace != "" {
+		q.Set("required_workspace_id", workspace)
+	}
 	return openRouterBase + "/auth?" + q.Encode()
 }
 
@@ -94,7 +97,7 @@ type cliError struct {
 
 func (e *cliError) Error() string { return e.msg }
 
-func loginPKCE(name string, args []string) {
+func loginPKCE(name string, args []string, workspace string) {
 	open := openBrowser
 	for _, a := range args {
 		if a != "--no-open" {
@@ -102,7 +105,7 @@ func loginPKCE(name string, args []string) {
 		}
 		open = nil
 	}
-	path, err := pkceLogin(os.Stdin, os.Stderr, openRouterBase, name, open)
+	path, err := pkceLogin(os.Stdin, os.Stderr, openRouterBase, name, workspace, open)
 	var ce *cliError
 	if errors.As(err, &ce) {
 		die(ce.code, ce.msg, ce.hints...)
@@ -111,12 +114,12 @@ func loginPKCE(name string, args []string) {
 }
 
 // pkceLogin prints the URL, reads the code from in, exchanges it at base and stores the key.
-func pkceLogin(in io.Reader, out io.Writer, base, name string, open func(string)) (string, error) {
+func pkceLogin(in io.Reader, out io.Writer, base, name, workspace string, open func(string)) (string, error) {
 	verifier, err := pkceVerifier()
 	if err != nil {
 		return "", &cliError{3, "cannot generate a PKCE verifier", []string{err.Error()}}
 	}
-	u := authURL(pkceChallenge(verifier), "harn-"+shortHostname())
+	u := authURL(pkceChallenge(verifier), "harn-"+shortHostname(), workspace)
 	fmt.Fprintf(out, "Open this URL, approve, then paste the code it shows:\n  %s\n", u)
 	if open != nil {
 		open(u)

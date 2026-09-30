@@ -33,7 +33,7 @@ func TestPKCEVerifierShape(t *testing.T) {
 }
 
 func TestAuthURL(t *testing.T) {
-	u, err := url.Parse(authURL("chal", "harn-host"))
+	u, err := url.Parse(authURL("chal", "harn-host", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +43,9 @@ func TestAuthURL(t *testing.T) {
 	}
 	if q.Get("code_challenge") != "chal" || q.Get("code_challenge_method") != "S256" || q.Get("key_label") != "harn-host" {
 		t.Errorf("query %v", q)
+	}
+	if _, ok := q["required_workspace_id"]; ok {
+		t.Error("no workspace pin without a workspace")
 	}
 }
 
@@ -104,7 +107,7 @@ func TestPKCELoginStoresTheReturnedKey(t *testing.T) {
 	defer srv.Close()
 	var out bytes.Buffer
 	opened := ""
-	path, err := pkceLogin(strings.NewReader("the-code-123\n"), &out, srv.URL, "openrouter", func(u string) { opened = u })
+	path, err := pkceLogin(strings.NewReader("the-code-123\n"), &out, srv.URL, "openrouter", "", func(u string) { opened = u })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,9 +126,16 @@ func TestPKCELoginStoresTheReturnedKey(t *testing.T) {
 }
 
 func TestPKCELoginRefusesAnEmptyCode(t *testing.T) {
-	_, err := pkceLogin(strings.NewReader("\n"), io.Discard, "http://unused.invalid", "openrouter", nil)
+	_, err := pkceLogin(strings.NewReader("\n"), io.Discard, "http://unused.invalid", "openrouter", "", nil)
 	var ce *cliError
 	if !errors.As(err, &ce) || ce.code != 2 || ce.msg != "no code entered" {
 		t.Errorf("err %v", err)
+	}
+}
+
+func TestAuthURLPinsTheWorkspace(t *testing.T) {
+	u, _ := url.Parse(authURL("chal", "harn-host", "ws-uuid-1"))
+	if got := u.Query().Get("required_workspace_id"); got != "ws-uuid-1" {
+		t.Errorf("required_workspace_id %q", got)
 	}
 }

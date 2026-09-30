@@ -14,3 +14,10 @@ has "URL labels the key" "$OUT" "key_label=harn-"
 OUT=$(printf '\n' | "$HARN" login openrouter --bogus 2>&1); RC=$?
 code "unknown login flag" "$RC" 2
 has "unknown login flag is named" "$OUT" "unknown flag: --bogus"
+
+# The workspace pin reaches the authorization URL.
+ws=$(cfgwith '.providers.openrouter.login = {"method": "openrouter-pkce", "workspace": "ws-uuid-1"}')
+OUT=$(printf '\n' | HARN_CONFIG="$ws" "$HARN" login openrouter --no-open 2>&1)
+has "URL pins the workspace" "$OUT" "required_workspace_id=ws-uuid-1"
+OUT=$(printf '\n' | "$HARN" login openrouter --no-open 2>&1)
+lacks "no pin without a workspace" "$OUT" "required_workspace_id"

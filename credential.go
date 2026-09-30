@@ -12,7 +12,7 @@ import (
 // With show set it never resolves the key.
 func credential(cfg *Config, name string, show bool) (value, redaction string) {
 	pr := cfg.Providers[name]
-	hasLogin, hasCmd := pr.Login != "", len(pr.KeyCommand) > 0
+	hasLogin, hasCmd := pr.Login.Method != "", len(pr.KeyCommand) > 0
 	if hasLogin && hasCmd {
 		die(2, fmt.Sprintf("provider '%s' sets both login and key_command", name), "keep one in "+cfg.File)
 	}
@@ -21,7 +21,11 @@ func credential(cfg *Config, name string, show bool) (value, redaction string) {
 			fmt.Sprintf("set providers.%s.login or providers.%s.key_command", name, name))
 	}
 	if hasLogin {
-		redaction = "<redacted: login " + pr.Login + ">"
+		redaction = "<redacted: login " + pr.Login.Method
+		if pr.Login.Workspace != "" {
+			redaction += ", workspace " + pr.Login.Workspace
+		}
+		redaction += ">"
 	} else {
 		redaction = "<redacted: key_command " + strings.Join(pr.KeyCommand, " ") + ">"
 	}

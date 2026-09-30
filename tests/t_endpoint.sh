@@ -112,3 +112,31 @@ has "declared retention" "$OUT" "# retention: zero, by the workspace guardrail"
 nl=$(cfgwith '.providers.openrouter |= (del(.login) | .key_command = ["true"] | .retention = "zero\necho pwned" | .label = "api\necho pwned")')
 OUT=$(HARN_CONFIG="$nl" "$HARN" claude gw --show 2>&1)
 printf '%s\n' "$OUT" | grep -q '^echo pwned' && bad "newlines stay inside comment lines" "$OUT" || ok "newlines stay inside comment lines"
+
+# Login options.
+ob=$(cfgwith '.providers.openrouter.login = {"method": "openrouter-pkce"}')
+OUT=$(HARN_CONFIG="$ob" "$HARN" claude gw --show 2>&1)
+has "object login without options" "$OUT" "<redacted: login openrouter-pkce>"
+ws=$(cfgwith '.providers.openrouter.login = {"method": "openrouter-pkce", "workspace": "ws-uuid-1"}')
+OUT=$(HARN_CONFIG="$ws" "$HARN" claude gw --show 2>&1)
+has "the redaction shows the workspace" "$OUT" "<redacted: login openrouter-pkce, workspace ws-uuid-1>"
+pw=$(cfgwith '.providers["ollama-cloud"].login = {"method": "paste", "workspace": "x"}')
+OUT=$(HARN_CONFIG="$pw" "$HARN" claude --show 2>&1); RC=$?
+code "workspace on paste is a config error" "$RC" 2
+has "workspace on paste names the field" "$OUT" "providers.ollama-cloud.login.workspace"
+uo=$(cfgwith '.providers.openrouter.login = {"method": "openrouter-pkce", "team": "x"}')
+OUT=$(HARN_CONFIG="$uo" "$HARN" claude --show 2>&1); RC=$?
+code "unknown login option" "$RC" 2
+has "unknown login option names the field" "$OUT" "providers.openrouter.login.team"
+nm=$(cfgwith '.providers.openrouter.login = {"workspace": "x"}')
+OUT=$(HARN_CONFIG="$nm" "$HARN" claude --show 2>&1); RC=$?
+code "login object without a method" "$RC" 2
+has "missing method names the field" "$OUT" "providers.openrouter.login.method"
+ew=$(cfgwith '.providers.openrouter.login = {"method": "openrouter-pkce", "workspace": ""}')
+OUT=$(HARN_CONFIG="$ew" "$HARN" claude --show 2>&1); RC=$?
+code "empty workspace" "$RC" 2
+has "empty workspace names the field" "$OUT" "providers.openrouter.login.workspace"
+um=$(cfgwith '.providers.openrouter.login = "sso"')
+OUT=$(HARN_CONFIG="$um" "$HARN" claude --show 2>&1); RC=$?
+code "unknown login method fails at load" "$RC" 2
+has "unknown login method is named" "$OUT" "unknown login 'sso'"

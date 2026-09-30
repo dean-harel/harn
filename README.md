@@ -96,7 +96,10 @@ which pulls the model, sets the context size and writes any harness profile it n
 **Credentials.** An endpoint sets exactly one of:
 
 - `"login": "openrouter-pkce"`: `harn login openrouter` runs OpenRouter's browser login and
-  stores the key it returns. No key ever passes through your clipboard.
+  stores the key it returns. No key ever passes through your clipboard. A member of several
+  OpenRouter workspaces pins the one the key is created in:
+  `"login": {"method": "openrouter-pkce", "workspace": "<workspace id>"}`. OpenRouter then locks
+  its workspace picker to that workspace.
 - `"login": "paste"`: `harn login <provider>` reads the key once from a hidden prompt.
 - `"key_command"`: any command whose output is the key, written as a list of words, for example
   `["op", "read", "op://Private/OpenRouter/credential"]` for 1Password or
