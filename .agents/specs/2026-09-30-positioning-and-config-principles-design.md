@@ -62,24 +62,30 @@ alias harnp='HARN_CONFIG=~/.config/harn/personal.json harn'
 `--show` prints the config file in use on its first line (`config: <path>`), so every run shows
 which account it used.
 
-### The workspace pin
+### Login options
 
-`login` takes an object form alongside the string form:
+A login method is how harn obtains a key, and the extension point for a gateway that creates keys
+itself. `login` takes an object form alongside the string form, which means the method with no
+options:
 
 ```json
-"openrouter": {
-  "kind": "endpoint",
-  "login": { "method": "openrouter-pkce", "workspace": "<workspace uuid>" },
-  ...
-}
+"login": { "method": "openrouter-pkce", "workspace": "<workspace uuid>" }
 ```
 
-- `"login": "openrouter-pkce"` stays valid and means the object with no `workspace`.
-- With `workspace`, `harn login` adds `required_workspace_id=<uuid>` to the authorization URL.
-  OpenRouter then creates the key in that workspace and locks the page's workspace picker.
-- `workspace` is accepted only with `openrouter-pkce`. On any other method, config loading exits 2
-  naming `providers.<p>.login.workspace`, since only that login creates the key.
-- `--show` prints the pin in the redaction: `<redacted: login openrouter-pkce, workspace <uuid>>`.
+- Each method declares the options it accepts. Config loading exits 2 naming
+  `providers.<p>.login.<option>` for an option its method does not accept.
+- Options exist only where the method creates the key, since that is when the client chooses the
+  key's scope (principle 5).
+- `--show` prints the options in the redaction: `<redacted: login openrouter-pkce, workspace <uuid>>`.
+
+| Method | Options |
+| --- | --- |
+| `paste` | none |
+| `openrouter-pkce` | `workspace`: adds `required_workspace_id=<uuid>` to the authorization URL, so OpenRouter creates the key in that workspace and locks the page's workspace picker |
+
+A gateway whose login creates keys, through an OAuth device or PKCE flow, adds a method with its own
+options. A gateway whose keys come from its dashboard uses `paste` or `key_command` and needs no
+code.
 
 ### The retention declaration
 
@@ -88,20 +94,24 @@ the provider's data retention, in the operator's words, as the skill's field doe
 (`"zero, by the workspace guardrail"`). `--show` prints `retention: <text>` for an endpoint run, or
 `retention: not declared`. harn enforces nothing from it.
 
-### Team onboarding
+### Onboarding a team to a gateway
 
-A member onboards with the shipped template, which already points `gw` at OpenRouter:
+Every gateway onboards the same way: the team's gateway is a provider entry, `gw` points at it, and
+each member logs in once.
 
 ```bash
-harn config init
-harn login openrouter
+harn config init           # the template ships openrouter, ollama-cloud, anthropic and ollama
+harn config edit           # when the team's gateway is another provider, or needs login options
+harn login <provider>
 harn claude gw
 ```
 
-A member of one OpenRouter workspace needs nothing more, since OpenRouter creates the key in that
-workspace. A member of several adds the team workspace's id as `login.workspace`, through
-`harn config edit`, before logging in. The team's member how-to carries the id; harn carries
-nothing team-specific.
+- The template points `gw` at OpenRouter, the gateway being onboarded today. A team on Ollama
+  Cloud points `gw` at `ollama-cloud` and logs in with its key.
+- A gateway missing from the template is one endpoint entry: base URLs for its wires, a
+  `default_model`, and `login: "paste"` or a `key_command`.
+- On OpenRouter, a member of several workspaces adds `login.workspace` before logging in. The
+  team's member how-to carries the id; harn carries nothing team-specific.
 
 ## Deferred
 
