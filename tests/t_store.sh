@@ -28,6 +28,11 @@ has "harn key runs key_command" "$OUT" "from-cmd"
 printf 'sk-oc-second' | "$HARN" login ollama-cloud >/dev/null 2>&1
 run key ollama-cloud
 has "a second login overwrites the key" "$OUT" "sk-oc-second"
+# Review Focus 3: a key file that exists with a looser mode is 0600 after a new login.
+chmod 644 "$f"
+printf 'sk-oc-third\n' | "$HARN" login ollama-cloud >/dev/null 2>&1
+perm=$(stat -c %a "$f" 2>/dev/null || stat -f %Lp "$f")
+code "a new login tightens the mode to 0600" "$perm" 600
 rm -f "$f"
 run key ollama-cloud
 code "key after the file is deleted" "$RC" 2

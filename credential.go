@@ -65,3 +65,24 @@ func storeRead(name string) string {
 	}
 	return string(b)
 }
+
+// storeWrite writes the key byte for byte, mode 0600 even over an existing file.
+func storeWrite(name, key string) (string, error) {
+	path := storeFile(name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return path, err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return path, err
+	}
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return path, err
+	}
+	if _, err := f.WriteString(key); err != nil {
+		f.Close()
+		return path, err
+	}
+	return path, f.Close()
+}
