@@ -59,8 +59,9 @@ reached with `HARN_CONFIG`, typically through a shell alias:
 alias harnp='HARN_CONFIG=~/.config/harn/personal.json harn'
 ```
 
-`--show` prints the config file in use on its first line (`config: <path>`), so every run shows
-which account it used.
+`--show` prints the config file in use on its first line (`# config: <path>`, or
+`# config: built-in template` when no file exists), so every run shows which account it used. Like
+the `# source:` line, it is a shell comment, so the output stays safe to paste into a shell.
 
 ### Login options
 
@@ -91,8 +92,8 @@ code.
 
 An optional `retention` string on an endpoint provider records what the operator declares about
 the provider's data retention, in the operator's words, as the skill's field does
-(`"zero, by the workspace guardrail"`). `--show` prints `retention: <text>` for an endpoint run, or
-`retention: not declared`. harn enforces nothing from it.
+(`"zero, by the workspace guardrail"`). `--show` prints `# retention: <text>` for an endpoint run, or
+`# retention: not declared`. harn enforces nothing from it.
 
 ### Onboarding a team to a gateway
 
@@ -142,9 +143,10 @@ Stripe, Fly, Doppler, Terraform). It is likely the UNIPaaS org's first Go codeba
 - **Process handover.** `syscall.Exec` replaces harn with the harness on macOS and Linux, so the
   harness owns the terminal, its signals and its exit code. Windows is outside this release.
 - **Dependencies.** The standard library covers HTTP, JSON, SHA-256 and random bytes, so the
-  runtime needs for `jq`, `curl` and `openssl` go away. The one library is `tailscale/hujson`,
-  which reads JSON with comments and trailing commas, the format adversarial-review's config
-  already uses. Today's plain-JSON configs parse unchanged.
+  runtime needs for `jq`, `curl` and `openssl` go away. Two libraries remain. `tailscale/hujson`
+  reads JSON with comments and trailing commas, the format adversarial-review's config already
+  uses, and today's plain-JSON configs parse unchanged. `golang.org/x/term`, maintained by the Go
+  team, turns echo off for the hidden paste prompt that bash got from `read -s`.
 - **Command line.** Parsed by hand against the grammar in the providers spec, which stays
   unchanged. Harness and provider names come from config, which fits a command framework's fixed
   subcommand tree poorly.
@@ -153,7 +155,9 @@ Stripe, Fly, Doppler, Terraform). It is likely the UNIPaaS org's first Go codeba
   anyone with Go.
 - **Version.** One marked constant in the Go source, rewritten by release-please as the bash
   script's line is today.
-- **Tests.** The 145 black-box checks in `tests/` run against the built binary unchanged and are
-  the acceptance suite for the port. Go unit tests cover logic worth testing from inside, such as
+- **Tests.** The black-box checks in `tests/` run against the built binary and are the
+  acceptance suite for the port. Every check of behaviour carries over; the checks tied to the bash
+  implementation (a stub `curl` and `jq` for the PKCE exchange, the `--pkce-selftest` hook, the
+  bash script's release markers) are replaced by Go unit tests or by checks of the Go files. Go unit tests cover logic worth testing from inside, such as
   the PKCE vector from RFC 7636. CI adds `go vet` and a `gofmt` check to the existing matrix.
 
