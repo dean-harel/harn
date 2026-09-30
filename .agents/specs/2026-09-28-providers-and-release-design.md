@@ -1,6 +1,6 @@
 # Providers, credentials and a production release
 
-Status: in review (design phase)
+Status: implemented in 0.1.0
 
 ## Goal
 
@@ -204,7 +204,7 @@ conventions as `UNIPaaS/gates` records them, so the repo can be adopted by the t
   no associative arrays, empty arrays expanded as `${a[@]+"${a[@]}"}` under `set -u`.
 - **Dependencies.** `jq`, `curl` and `openssl`. macOS ships all three (`jq` as `/usr/bin/jq`
   on current releases); minimal Linux images can lack `jq` and `curl`. The Homebrew formula
-  declares `jq` and `curl`, and harn checks for all three before first use and names the
+  declares `jq`, `curl` and `openssl`, and harn checks for all three before first use and names the
   install command for a missing one.
 - **Files.** `README.md` (positioning first), `AGENTS.md` with `CLAUDE.md` symlinked to it,
   `CONTRIBUTING.md` stating the minimal core, `SECURITY.md` with the trust boundary (the user's
