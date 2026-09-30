@@ -47,6 +47,8 @@ func run(cfg *Config, args []string) {
 	switch p.kind {
 	case "account":
 		kindAccount(inv, h, p)
+	case "endpoint":
+		kindEndpoint(cfg, inv, h, p)
 	default:
 		die(2, fmt.Sprintf("provider '%s' has unknown kind '%s'", p.provider, p.kind), "kind is one of: endpoint, launcher")
 	}
@@ -127,6 +129,64 @@ func kindAccount(inv invocation, h Harness, p *plan) {
 	p.argv = []string{h.Binary}
 	if inv.model != "" {
 		p.argv = append(p.argv, "--model", inv.model)
+	}
+	p.argv = append(p.argv, inv.pass...)
+}
+
+func kindEndpoint(cfg *Config, inv invocation, h Harness, p *plan) {
+	pr := cfg.Providers[p.provider]
+	w := pr.wire(h.Wire)
+	if w == nil || w.BaseURL == "" {
+		die(2, fmt.Sprintf("provider '%s' has no %s_wire, which %s needs", p.provider, h.Wire, inv.harness),
+			fmt.Sprintf("set providers.%s.%s_wire.base_url in %s", p.provider, h.Wire, cfg.File))
+	}
+	model := inv.model
+	if model == "" {
+		model = pr.DefaultModel
+	}
+	if model == "" {
+		die(2, fmt.Sprintf("no model given and provider '%s' has no default", p.provider),
+			fmt.Sprintf("pass one: harn %s %s <model>", inv.harness, inv.source),
+			fmt.Sprintf("or set providers.%s.default_model", p.provider))
+	}
+	env, err := keyEnv(cfg, h.Wire, p.provider)
+	if err != nil {
+		die(2, err.Error(), fmt.Sprintf("set providers.%s.%s_wire.key_env to a valid name", p.provider, h.Wire))
+	}
+	value, redaction := credential(cfg, p.provider, inv.show)
+	key := envVar{name: env, value: value, redaction: redaction}
+	switch h.Wire {
+	case "anthropic":
+		p.set("ANTHROPIC_BASE_URL", w.BaseURL)
+		p.env = append(p.env, key)
+		if env == "ANTHROPIC_API_KEY" {
+			p.set("ANTHROPIC_AUTH_TOKEN", "")
+		} else {
+			p.set("ANTHROPIC_API_KEY", "")
+		}
+		p.argv = []string{h.Binary, "--model", model}
+	case "openai":
+		p.env = append(p.env, key)
+		name := p.provider
+		if n := pr.HarnessNames[inv.harness]; n != "" {
+			name = n
+		}
+		wireAPI := w.WireAPI
+		if wireAPI == "" {
+			wireAPI = "responses"
+		}
+		tmpl := h.GwArgv
+		if tmpl == nil {
+			tmpl = []string{"--provider", "{provider}", "--model", "{model}"}
+		}
+		r := strings.NewReplacer("{provider}", name, "{model}", model, "{base_url}", w.BaseURL,
+			"{key_env}", env, "{wire_api}", wireAPI)
+		p.argv = []string{h.Binary}
+		for _, t := range tmpl {
+			p.argv = append(p.argv, r.Replace(t))
+		}
+	default:
+		die(2, fmt.Sprintf("harness '%s' has unknown wire '%s'", inv.harness, h.Wire), "wire is one of: anthropic, openai")
 	}
 	p.argv = append(p.argv, inv.pass...)
 }

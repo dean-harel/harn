@@ -94,3 +94,9 @@ stub codex 'echo launched'
 OUT=$(HARN_CONFIG="$dg" PATH="$STUBS:$PATH" "$HARN" codex 1st 2>&1); RC=$?
 code "invalid derived key name is a config error" "$RC" 2
 has "invalid derived name says to set key_env" "$OUT" "providers.1st.openai_wire.key_env"
+
+# Review Focus 2: a key_command whose binary is missing is named, and nothing launches.
+nk=$(cfgwith '.providers.openrouter |= (del(.login) | .key_command = ["no-such-key-command"])')
+OUT=$(HARN_CONFIG="$nk" PATH="$STUBS:$PATH" "$HARN" claude gw 2>&1); RC=$?
+code "missing key_command binary" "$RC" 2
+has "missing key_command names the provider" "$OUT" "key_command for 'openrouter' failed"
