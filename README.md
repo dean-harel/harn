@@ -107,6 +107,21 @@ which pulls the model, sets the context size and writes any harness profile it n
 a provider under another name, map it: a provider you called `or` reaches Pi with
 `"harness_names": {"pi": "openrouter"}`.
 
+**Accounts.** A second account, such as a personal one beside a team one, is a second config
+file. Point `HARN_CONFIG` at it, for example through an alias:
+
+```bash
+alias harnp='HARN_CONFIG=~/.config/harn/personal.json harn'
+```
+
+`--show` names the config file on its first line, so a run always shows which account it used.
+Keys from `harn login` are stored by provider name, so when two files both log in to one
+provider, give it a different name in each.
+
+**Retention.** An optional `retention` string on an endpoint records what you declare about the
+provider's data retention, such as `"zero, by the workspace guardrail"`. `--show` prints it, and
+harn enforces nothing from it.
+
 ## Where keys live
 
 A key from `harn login` is one file per provider under

@@ -57,3 +57,13 @@ func ansiQuote(s string) string {
 	b.WriteByte('\'')
 	return b.String()
 }
+
+// commentText keeps a value on one line, so a --show comment line stays a comment when pasted.
+func commentText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, s)
+}

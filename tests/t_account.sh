@@ -97,3 +97,11 @@ nb=$(cfgwith '.harness.claude.binary = "no-such-harness-binary"')
 OUT=$(HARN_CONFIG="$nb" "$HARN" claude 2>&1); RC=$?
 code "missing harness binary" "$RC" 2
 has "missing binary is named" "$OUT" "'no-such-harness-binary' is not on PATH"
+
+# The config file in use heads --show.
+run claude --show
+first=$(printf '%s\n' "$OUT" | head -n 1)
+code "first --show line names the config" "$first" "# config: $HARN_CONFIG"
+OUT=$(HARN_CONFIG="$HOME/no-such-dir/config.json" "$HARN" claude --show 2>&1)
+has "a missing file shows the built-in template" "$OUT" "# config: built-in template"
+lacks "an account run declares no retention" "$OUT" "# retention:"

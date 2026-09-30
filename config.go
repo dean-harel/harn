@@ -30,6 +30,7 @@ type Provider struct {
 	Login         string            `json:"login"`
 	KeyCommand    []string          `json:"key_command"`
 	DefaultModel  string            `json:"default_model"`
+	Retention     string            `json:"retention"`
 	AnthropicWire *Wire             `json:"anthropic_wire"`
 	OpenAIWire    *Wire             `json:"openai_wire"`
 	HarnessNames  map[string]string `json:"harness_names"`

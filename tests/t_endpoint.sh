@@ -100,3 +100,15 @@ nk=$(cfgwith '.providers.openrouter |= (del(.login) | .key_command = ["no-such-k
 OUT=$(HARN_CONFIG="$nk" PATH="$STUBS:$PATH" "$HARN" claude gw 2>&1); RC=$?
 code "missing key_command binary" "$RC" 2
 has "missing key_command names the provider" "$OUT" "key_command for 'openrouter' failed"
+
+# The retention declaration.
+OUT=$(HARN_CONFIG="$kc" "$HARN" claude gw --show 2>&1)
+has "undeclared retention" "$OUT" "# retention: not declared"
+rt=$(cfgwith '.providers.openrouter |= (del(.login) | .key_command = ["true"] | .retention = "zero, by the workspace guardrail")')
+OUT=$(HARN_CONFIG="$rt" "$HARN" claude gw --show 2>&1)
+has "declared retention" "$OUT" "# retention: zero, by the workspace guardrail"
+
+# Review Focus 4: a newline in config text cannot become its own line in --show.
+nl=$(cfgwith '.providers.openrouter |= (del(.login) | .key_command = ["true"] | .retention = "zero\necho pwned" | .label = "api\necho pwned")')
+OUT=$(HARN_CONFIG="$nl" "$HARN" claude gw --show 2>&1)
+printf '%s\n' "$OUT" | grep -q '^echo pwned' && bad "newlines stay inside comment lines" "$OUT" || ok "newlines stay inside comment lines"

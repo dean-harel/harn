@@ -34,3 +34,9 @@ func TestShellQuoteMatchesBashPrintfQ(t *testing.T) {
 		}
 	}
 }
+
+func TestCommentTextKeepsOneLine(t *testing.T) {
+	if got := commentText("zero\necho pwned\r\t!"); got != "zero echo pwned  !" {
+		t.Errorf("commentText = %q", got)
+	}
+}

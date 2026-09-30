@@ -24,11 +24,12 @@ type envVar struct {
 }
 
 type plan struct {
-	provider string // empty for the subscription
-	label    string
-	kind     string
-	env      []envVar
-	argv     []string
+	provider  string // empty for the subscription
+	label     string
+	kind      string
+	retention string // the operator's declaration, for an endpoint
+	env       []envVar
+	argv      []string
 }
 
 func (p *plan) set(name, value string) { p.env = append(p.env, envVar{name: name, value: value}) }
@@ -120,7 +121,7 @@ func resolveSource(cfg *Config, inv invocation, h Harness) *plan {
 	if !ok || pr.Kind == "" {
 		die(2, "unknown source '"+p.provider+"'", "known: account, gw, local, "+strings.Join(sortedKeys(cfg.Providers), ", "))
 	}
-	p.kind, p.label = pr.Kind, pr.Label
+	p.kind, p.label, p.retention = pr.Kind, pr.Label, pr.Retention
 	if p.label == "" {
 		p.label = "api"
 	}
@@ -307,12 +308,20 @@ func execute(cfg *Config, inv invocation, p *plan) {
 		if provider == "" {
 			provider = "account"
 		}
-		fmt.Printf("# source: %s (%s)\n", provider, p.label)
+		fmt.Printf("# config: %s\n", commentText(displaySource(cfg.Source)))
+		fmt.Printf("# source: %s (%s)\n", commentText(provider), commentText(p.label))
+		if p.kind == "endpoint" {
+			r := p.retention
+			if r == "" {
+				r = "not declared"
+			}
+			fmt.Printf("# retention: %s\n", commentText(r))
+		}
 		fmt.Printf("unset %s\n", strings.Join(vars, " "))
 		for _, e := range p.env {
 			shown := shellQuote(e.value)
 			if e.redaction != "" {
-				shown = e.redaction
+				shown = commentText(e.redaction)
 			}
 			fmt.Printf("export %s=%s\n", e.name, shown)
 		}

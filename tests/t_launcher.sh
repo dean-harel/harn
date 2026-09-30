@@ -22,3 +22,6 @@ str=$(cfgwith '.providers.ollama.launcher = "ollama launch"')
 OUT=$(HARN_CONFIG="$str" "$HARN" claude local m --show 2>&1); RC=$?
 code "string launcher is a config error" "$RC" 2
 has "names the launcher field" "$OUT" "providers.ollama.launcher"
+
+run claude local m --show
+lacks "a launcher run declares no retention" "$OUT" "# retention:"
