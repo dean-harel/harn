@@ -1,6 +1,6 @@
 # Positioning and configuration principles
 
-Status: in review (design phase)
+Status: implemented
 
 ## Positioning
 
@@ -124,8 +124,8 @@ Each has the trigger that brings it in.
 - **A key store scoped per config file.** Today every file shares `keys/<provider>`, so two files
   using a PKCE login under one provider name share one key. Trigger: the first person who hits it.
   A `key_command` provider never touches the store.
-- **Prebuilt binaries** through `goreleaser`, with checksums, for installs outside Homebrew and
-  `go install`. Trigger: a Windows user, or a member without Homebrew or Go.
+- **Prebuilt binaries** through `goreleaser`, with checksums, for installs without Go. Trigger: a
+  Windows user, or someone without Go.
 - **A keychain key store** through `zalando/go-keyring`, the library GitHub's, Stripe's and
   Doppler's CLIs share. Trigger: someone needs a store other than a 0600 file.
 
@@ -150,11 +150,9 @@ Stripe, Fly, Doppler, Terraform). It is likely the UNIPaaS org's first Go codeba
 - **Command line.** Parsed by hand against the grammar in the providers spec, which stays
   unchanged. Harness and provider names come from config, which fits a command framework's fixed
   subcommand tree poorly.
-- **Install.** The Homebrew formula builds from the git tag (`depends_on "go" => :build`), so a
-  release still needs no uploaded asset; `go install github.com/dean-harel/harn@<tag>` works for
-  anyone with Go.
-- **Version.** One marked constant in the Go source, rewritten by release-please as the bash
-  script's line is today.
+- **Install.** From source: `go install github.com/dean-harel/harn@latest`, or `go build` in a
+  clone. The repository cuts no releases.
+- **Version.** One constant in the Go source.
 - **Tests.** The black-box checks in `tests/` run against the built binary and are the
   acceptance suite for the port. Every check of behaviour carries over; the checks tied to the bash
   implementation (a stub `curl` and `jq` for the PKCE exchange, the `--pkce-selftest` hook, the

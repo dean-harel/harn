@@ -1,6 +1,8 @@
 # Providers, credentials and a production release
 
-Status: implemented in 0.1.0
+Status: the grammar, credentials and behaviour stand; the implementation, release and install
+sections are replaced by the Implementation section of
+`2026-09-30-positioning-and-config-principles-design.md`.
 
 ## Goal
 
