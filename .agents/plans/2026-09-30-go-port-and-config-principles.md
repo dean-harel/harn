@@ -161,7 +161,7 @@ import (
 
 func TestShellQuoteRoundTripsThroughBash(t *testing.T) {
 	cases := []string{"", "plain", "hello world", "it's", `back\slash`, "a\nb", "tab\there",
-		"$HOME", "`id`", "semi;colon", "~user", "glob*?[x]", "café ✓",
+		"$HOME", "`id`", "semi;colon", "~user", "glob*?[x]", "caf\u00e9 \u2713",
 		"https://openrouter.ai/api/v1", "!bang", "ctrl\x01char"}
 	for _, s := range cases {
 		out, err := exec.Command("/bin/bash", "-c", "printf '%s' "+shellQuote(s)).Output()
