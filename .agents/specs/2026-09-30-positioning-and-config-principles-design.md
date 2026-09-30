@@ -1,6 +1,6 @@
 # Positioning and configuration principles
 
-Status: in design. One decision is open, listed at the end.
+Status: in review (design phase)
 
 ## Positioning
 
@@ -90,8 +90,18 @@ the provider's data retention, in the operator's words, as the skill's field doe
 
 ### Team onboarding
 
-A team's setup is one config file kept in the team's own repository, holding the team gateway with
-its workspace pin and its retention declaration. harn itself carries nothing team-specific.
+A member onboards with the shipped template, which already points `gw` at OpenRouter:
+
+```bash
+harn config init
+harn login openrouter
+harn claude gw
+```
+
+A member of one OpenRouter workspace needs nothing more, since OpenRouter creates the key in that
+workspace. A member of several adds the team workspace's id as `login.workspace`, through
+`harn config edit`, before logging in. The team's member how-to carries the id; harn carries
+nothing team-specific.
 
 ## Deferred
 
@@ -137,7 +147,3 @@ Stripe, Fly, Doppler, Terraform). It is likely the UNIPaaS org's first Go codeba
   the acceptance suite for the port. Go unit tests cover logic worth testing from inside, such as
   the PKCE vector from RFC 7636. CI adds `go vet` and a `gofmt` check to the existing matrix.
 
-## Open decision
-
-**How a member installs the team's config file**: copied into place by hand, or
-`harn config init --from <file>`.
