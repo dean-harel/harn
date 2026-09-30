@@ -1,6 +1,6 @@
 # Positioning and configuration principles
 
-Status: in design. Two decisions are open, listed at the end.
+Status: in design. One decision is open, listed at the end.
 
 ## Positioning
 
@@ -103,23 +103,41 @@ Each has the trigger that brings it in.
 - **A key store scoped per config file.** Today every file shares `keys/<provider>`, so two files
   using a PKCE login under one provider name share one key. Trigger: the first person who hits it.
   A `key_command` provider never touches the store.
-- **Comments in the config.** `jq` reads plain JSON only; comments come with the implementation
-  language decision below.
+- **Prebuilt binaries** through `goreleaser`, with checksums, for installs outside Homebrew and
+  `go install`. Trigger: a Windows user, or a member without Homebrew or Go.
+- **A keychain key store** through `zalando/go-keyring`, the library GitHub's, Stripe's and
+  Doppler's CLIs share. Trigger: someone needs a store other than a 0600 file.
 
 Vendor presets, built-in defaults per vendor, are out: they would put vendor knowledge into the
 core, against principle 2.
 
-## Open decisions
+## Implementation
 
-1. **Implementation language.** The candidates, from a survey of eighteen CLIs:
-   - Go, where most provider CLIs converged (GitHub `gh`, Stripe, Fly, Doppler, Terraform), with
-     `cobra`, `goreleaser` and `zalando/go-keyring` in common. `syscall.Exec` hands the process to
-     the harness. The current recommendation.
-   - TypeScript compiled with Bun, the AI-tooling camp (Claude Code, Ori, opencode, and Supabase,
-     which moved to it from Go). The team's language; a larger binary and a less mature process
-     handover.
-   - bash 3.2, today's implementation: no build, no Windows, no keychain without shelling out.
+**Language by kind of software.** Skills and services are TypeScript: they run inside an agent's
+runtime or the team's stack and ship as source. Standalone CLIs are Go: they run before any
+agent, from any project directory, installed by people, and must be self-contained. harn is a
+standalone CLI, so harn is Go, the language most provider CLIs converged on (GitHub `gh`,
+Stripe, Fly, Doppler, Terraform). It is likely the UNIPaaS org's first Go codebase.
 
-   The 145 black-box checks in `tests/` become the acceptance suite for any port.
-2. **How a member installs the team's config file**: copied into place by hand, or
-   `harn config init --from <file>`.
+- **Process handover.** `syscall.Exec` replaces harn with the harness on macOS and Linux, so the
+  harness owns the terminal, its signals and its exit code. Windows is outside this release.
+- **Dependencies.** The standard library covers HTTP, JSON, SHA-256 and random bytes, so the
+  runtime needs for `jq`, `curl` and `openssl` go away. The one library is `tailscale/hujson`,
+  which reads JSON with comments and trailing commas, the format adversarial-review's config
+  already uses. Today's plain-JSON configs parse unchanged.
+- **Command line.** Parsed by hand against the grammar in the providers spec, which stays
+  unchanged. Harness and provider names come from config, which fits a command framework's fixed
+  subcommand tree poorly.
+- **Install.** The Homebrew formula builds from the git tag (`depends_on "go" => :build`), so a
+  release still needs no uploaded asset; `go install github.com/dean-harel/harn@<tag>` works for
+  anyone with Go.
+- **Version.** One marked constant in the Go source, rewritten by release-please as the bash
+  script's line is today.
+- **Tests.** The 145 black-box checks in `tests/` run against the built binary unchanged and are
+  the acceptance suite for the port. Go unit tests cover logic worth testing from inside, such as
+  the PKCE vector from RFC 7636. CI adds `go vet` and a `gofmt` check to the existing matrix.
+
+## Open decision
+
+**How a member installs the team's config file**: copied into place by hand, or
+`harn config init --from <file>`.
