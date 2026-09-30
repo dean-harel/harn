@@ -9,6 +9,7 @@ local model. The standard library plus `tailscale/hujson` and `golang.org/x/term
     /bin/bash tests/run.sh t_endpoint   # one test file
     go test ./...                       # unit tests: quoting, config parsing, PKCE, the key store
     go vet ./... && gofmt -l .          # CI fails on any output from gofmt -l
+    go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...   # known vulnerabilities reachable from harn
 
 The black-box suite runs the binary as a child process against a temporary HOME, never launches a
 real harness and never reaches the network. HARN_BIN points it at another binary. The test

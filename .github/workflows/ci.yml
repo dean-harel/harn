@@ -45,3 +45,33 @@ jobs:
         with:
           persist-credentials: false
       - run: shellcheck --shell=bash tests/*.sh
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+  # The one check a ruleset can require: a matrix job reports per leg, and a skipped job reports nothing.
+  validate:
+    needs: [test, shellcheck, govulncheck]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for r in $RESULTS; do
+            if [ "$r" != "success" ]; then echo "a required job ended $r: $RESULTS"; exit 1; fi
+          done
+          echo ok
