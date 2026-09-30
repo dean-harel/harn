@@ -22,15 +22,13 @@ brew tap dean-harel/harn https://github.com/dean-harel/harn
 brew install dean-harel/harn/harn
 ```
 
-Or from a release tag:
+With Go:
 
 ```bash
-git clone --branch vX.Y.Z git@github.com:dean-harel/harn.git ~/src/harn
-ln -s ~/src/harn/bin/harn ~/.local/bin/harn
+go install github.com/dean-harel/harn@vX.Y.Z
 ```
 
-Requirements: `jq`, `curl` and `openssl`. macOS ships all three; on a minimal Linux image install
-`jq`, `curl` and `openssl` with the package manager. harn names a missing one on first use.
+harn is one self-contained binary with no runtime dependencies.
 
 ## Use
 
@@ -82,9 +80,10 @@ into an issue.
 
 ## Config
 
-One file, `$HARN_CONFIG` or `${XDG_CONFIG_HOME:-~/.config}/harn/config.json`. `harn config init`
-writes the shipped template, [`lib/config.template.json`](lib/config.template.json), and
-`harn config` prints the resolved file.
+One file, `$HARN_CONFIG` or `${XDG_CONFIG_HOME:-~/.config}/harn/config.json`, in JSON with
+comments and trailing commas allowed. `harn config init` writes the shipped template,
+[`lib/config.template.json`](lib/config.template.json), and `harn config` prints the file as
+written.
 
 **Slots** are the swap point. `gw` and `local` each name one provider; changing a slot changes no
 command. The names `gw`, `local` and `account` are reserved.
@@ -129,8 +128,9 @@ valid. Logging in again overwrites the file.
 ## Develop
 
 ```bash
-/bin/bash tests/run.sh
-bin/harn claude gw --show
+/bin/bash tests/run.sh          # builds .build/harn, then the black-box suite; needs Go and jq
+go test ./...                   # unit tests
+go run . claude gw --show
 ```
 
 The suite runs under macOS `/bin/bash` 3.2 and on Linux, never launches a harness and never

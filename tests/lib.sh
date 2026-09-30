@@ -1,4 +1,4 @@
-# Sourced by tests/run.sh. Every test runs bin/harn as a child process against an isolated HOME.
+# Sourced by tests/run.sh. Every test runs the harn binary as a child process against an isolated HOME.
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 HARN="${HARN_BIN:-$ROOT/.build/harn}"
 T_PASS=0

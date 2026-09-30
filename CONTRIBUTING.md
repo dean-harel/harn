@@ -4,7 +4,7 @@ harn's core is small on purpose: resolve a source, build an environment and an a
 harness or provider is a config entry, not a code change. Changes that grow the core need an
 issue first.
 
-Before a pull request: `/bin/bash tests/run.sh` passes, `shellcheck --shell=bash bin/harn
-tests/*.sh` is clean, and the title is a Conventional Commit. Do not edit CHANGELOG.md;
-release-please writes it. You must understand every line you submit, including any an agent
-wrote.
+Before a pull request: `/bin/bash tests/run.sh` and `go test ./...` pass, `go vet ./...` and
+`shellcheck --shell=bash tests/*.sh` are clean, `gofmt -l .` prints nothing, and the title is a
+Conventional Commit. Do not edit CHANGELOG.md; release-please writes it. You must understand every
+line you submit, including any an agent wrote.

@@ -6,13 +6,10 @@ class Harn < Formula
   license "MIT"
   head "https://github.com/dean-harel/harn.git", branch: "main"
 
-  depends_on "jq"
-  uses_from_macos "curl"
-  uses_from_macos "openssl@3"
+  depends_on "go" => :build
 
   def install
-    libexec.install "bin", "lib"
-    bin.install_symlink libexec/"bin/harn"
+    system "go", "build", *std_go_args(ldflags: "-s -w")
   end
 
   test do

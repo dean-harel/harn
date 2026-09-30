@@ -34,13 +34,14 @@ for f in CONTRIBUTING.md SECURITY.md .github/ISSUE_TEMPLATE/bug.yml .github/ISSU
 done
 
 jq -e '.packages["."] | .["release-type"] == "simple" and .["bump-minor-pre-major"] == true
-  and (.["extra-files"] | index("bin/harn") and index("Formula/harn.rb"))' \
+  and (.["extra-files"] | index("main.go") and index("Formula/harn.rb"))' \
   "$ROOT/release-please-config.json" >/dev/null 2>&1 && ok "release-please config" || bad "release-please config"
-grep -q 'x-release-please-version' "$ROOT/bin/harn" && ok "version marker in bin/harn" || bad "version marker in bin/harn"
+grep -q 'x-release-please-version' "$ROOT/main.go" && ok "version marker in main.go" || bad "version marker in main.go"
 grep -q 'tag: "v[0-9.]*" # x-release-please-version' "$ROOT/Formula/harn.rb" 2>/dev/null \
   && ok "version marker in the formula" || bad "version marker in the formula"
-grep -q 'uses_from_macos "openssl@3"' "$ROOT/Formula/harn.rb" && ok "formula declares openssl" || bad "formula declares openssl"
-grep -q '`jq`, `curl` and `openssl` with the package manager' "$ROOT/README.md" && ok "README names openssl for minimal Linux" || bad "README names openssl for minimal Linux"
+grep -q 'depends_on "go" => :build' "$ROOT/Formula/harn.rb" && ok "formula builds with Go" || bad "formula builds with Go"
+[ ! -e "$ROOT/bin/harn" ] && ok "the bash script is gone" || bad "the bash script is gone"
+grep -qF 'go install github.com/dean-harel/harn@' "$ROOT/README.md" && ok "README names go install" || bad "README names go install"
 
 # Review Focus 5: comments and trailing commas parse; invalid JSON is a config error naming the file.
 cm=$(mktemp)
