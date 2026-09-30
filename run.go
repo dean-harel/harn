@@ -49,6 +49,8 @@ func run(cfg *Config, args []string) {
 		kindAccount(inv, h, p)
 	case "endpoint":
 		kindEndpoint(cfg, inv, h, p)
+	case "launcher":
+		kindLauncher(cfg, inv, p)
 	default:
 		die(2, fmt.Sprintf("provider '%s' has unknown kind '%s'", p.provider, p.kind), "kind is one of: endpoint, launcher")
 	}
@@ -189,6 +191,28 @@ func kindEndpoint(cfg *Config, inv invocation, h Harness, p *plan) {
 		die(2, fmt.Sprintf("harness '%s' has unknown wire '%s'", inv.harness, h.Wire), "wire is one of: anthropic, openai")
 	}
 	p.argv = append(p.argv, inv.pass...)
+}
+
+func kindLauncher(cfg *Config, inv invocation, p *plan) {
+	pr := cfg.Providers[p.provider]
+	var argv []string
+	if err := json.Unmarshal(pr.Launcher, &argv); err != nil {
+		die(2, fmt.Sprintf("providers.%s.launcher must be an argv array", p.provider), `for example: ["ollama", "launch"]`)
+	}
+	if len(argv) == 0 {
+		die(2, fmt.Sprintf("providers.%s.launcher is empty", p.provider))
+	}
+	p.argv = append(argv, inv.harness)
+	model := inv.model
+	if model == "" {
+		model = pr.DefaultModel
+	}
+	if model != "" {
+		p.argv = append(p.argv, "--model", model)
+	}
+	if len(inv.pass) > 0 {
+		p.argv = append(append(p.argv, "--"), inv.pass...)
+	}
 }
 
 // keyEnv is the variable a provider's key travels in on a wire.
