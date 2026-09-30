@@ -15,17 +15,16 @@ one.
 
 ## Install
 
-With Homebrew, on macOS or Linux:
-
-```bash
-brew tap dean-harel/harn https://github.com/dean-harel/harn
-brew install dean-harel/harn/harn
-```
-
 With Go:
 
 ```bash
-go install github.com/dean-harel/harn@vX.Y.Z
+go install github.com/dean-harel/harn@latest
+```
+
+Or from a clone:
+
+```bash
+go build -o ~/.local/bin/harn .
 ```
 
 harn is one self-contained binary with no runtime dependencies.

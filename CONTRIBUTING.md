@@ -6,5 +6,4 @@ issue first.
 
 Before a pull request: `/bin/bash tests/run.sh` and `go test ./...` pass, `go vet ./...` and
 `shellcheck --shell=bash tests/*.sh` are clean, `gofmt -l .` prints nothing, and the title is a
-Conventional Commit. Do not edit CHANGELOG.md; release-please writes it. You must understand every
-line you submit, including any an agent wrote.
+Conventional Commit. You must understand every line you submit, including any an agent wrote.

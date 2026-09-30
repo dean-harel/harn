@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-const version = "0.0.0-dev" // x-release-please-version
+const version = "0.0.0-dev"
 
 const usage = "usage: harn <harness> [<source>] [<model>] [--show] [-- <args>...]"
 

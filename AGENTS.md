@@ -34,11 +34,9 @@ One package at the root. main.go dispatches and holds the version; config.go loa
 embeds lib/config.template.json, which stays plain JSON because the tests edit it with jq; run.go
 turns a source into an environment and an argv and execs it; quote.go quotes for --show;
 credential.go resolves keys and owns the key store; login.go and pkce.go obtain keys;
-configcmd.go is harn config. Formula/harn.rb makes the repository its own Homebrew tap and builds
-from the release tag. Specs and plans are in .agents/.
+configcmd.go is harn config. Specs and plans are in .agents/.
 
 ## Conventions
 
-Conventional Commits; release-please cuts releases from main. Its release PR is opened by GITHUB_TOKEN,
-which starts no workflows, so that PR carries no CI; main requires no checks, so it still merges.
-Requiring checks on main first needs a GitHub App token for release-please. No attribution lines anywhere.
+Conventional Commits; pull requests are squash-merged with the PR title as the commit message. harn is
+installed from source (go install or a clone), so there are no releases. No attribution lines anywhere.

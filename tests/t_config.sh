@@ -26,22 +26,19 @@ has "help shows usage" "$OUT" "usage: harn <harness>"
 has "help lists login" "$OUT" "harn login <provider>"
 
 # Docs name every command the help text names.
-for w in "harn login" "harn key" "harn config init" "--show" "brew tap dean-harel/harn https://github.com/dean-harel/harn" "brew install dean-harel/harn/harn"; do
+for w in "harn login" "harn key" "harn config init" "--show"; do
   grep -qF -- "$w" "$ROOT/README.md" && ok "README mentions $w" || bad "README mentions $w"
 done
 for f in CONTRIBUTING.md SECURITY.md .github/ISSUE_TEMPLATE/bug.yml .github/ISSUE_TEMPLATE/feature.yml; do
   [ -f "$ROOT/$f" ] && ok "$f exists" || bad "$f exists"
 done
 
-jq -e '.packages["."] | .["release-type"] == "simple" and .["bump-minor-pre-major"] == true
-  and (.["extra-files"] | index("main.go") and index("Formula/harn.rb"))' \
-  "$ROOT/release-please-config.json" >/dev/null 2>&1 && ok "release-please config" || bad "release-please config"
-grep -q 'x-release-please-version' "$ROOT/main.go" && ok "version marker in main.go" || bad "version marker in main.go"
-grep -q 'tag: "v[0-9.]*" # x-release-please-version' "$ROOT/Formula/harn.rb" 2>/dev/null \
-  && ok "version marker in the formula" || bad "version marker in the formula"
-grep -q 'depends_on "go" => :build' "$ROOT/Formula/harn.rb" && ok "formula builds with Go" || bad "formula builds with Go"
+# Installed from source: no release machinery.
+for f in .github/workflows/release.yml release-please-config.json .release-please-manifest.json Formula/harn.rb; do
+  [ ! -e "$ROOT/$f" ] && ok "no $f" || bad "no $f"
+done
 [ ! -e "$ROOT/bin/harn" ] && ok "the bash script is gone" || bad "the bash script is gone"
-grep -qF 'go install github.com/dean-harel/harn@' "$ROOT/README.md" && ok "README names go install" || bad "README names go install"
+grep -qF 'go install github.com/dean-harel/harn@latest' "$ROOT/README.md" && ok "README names go install" || bad "README names go install"
 
 # Review Focus 5: comments and trailing commas parse; invalid JSON is a config error naming the file.
 cm=$(mktemp)
